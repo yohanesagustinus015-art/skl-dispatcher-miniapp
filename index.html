@@ -71,8 +71,6 @@
   .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
   .issue-edit-row:first-child { border-top: none; padding-top: 0; }
   .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  .issue-edit-row .issue-fields { display: flex; gap: 8px; }
-  .issue-edit-row .issue-fields > div { flex: 1; }
   .issue-edit-row label { margin: 4px 0 4px; }
   button.primary {
     width: 100%; margin-top: 14px; padding: 13px; border: none; border-radius: 8px;
@@ -140,9 +138,11 @@
 const API_URL = "https://kcftvbuwotjjroattdak.supabase.co/functions/v1/dispatcher-api";
 const tg = window.Telegram && window.Telegram.WebApp;
 
-let catalogs = { vendors: [] };
-
 const BUCKET_LABELS = { pool: "Pool", under_repair: "Under repair", at_indahkiat: "At Indahkiat", lainnya: "Lainnya" };
+
+// Indonesian labels for repair_records.status -- direct feedback,
+// 2026-08-29: "status: 'xxx' should have xx be in bahasa indonesia."
+const STATUS_LABELS = { open: "Sedang dikerjakan", pending_signoff: "Menunggu sign-off", signed_off: "Sudah sign-off" };
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -167,11 +167,6 @@ function setScreen(name) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === "screen-" + name));
   if (name === "repairs") loadRepairs();
   if (name === "yard") loadYard();
-}
-
-async function loadCatalogs() {
-  const { vendors } = await call("list_catalogs");
-  catalogs = { vendors: vendors || [] };
 }
 
 function formatDate(iso) {
@@ -204,29 +199,21 @@ async function loadRepairs() {
           <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
         </summary>
         <div class="repair-body">
-          <div class="card-meta">Mulai ${formatDate(r.downtime_start)} &middot; Status: ${r.status}</div>
+          <div class="card-meta">Mulai ${formatDate(r.downtime_start)} &middot; Status: ${STATUS_LABELS[r.status] || r.status}</div>
           <div class="card-section">
             ${issues
               .map((issue, i) => `
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
                   <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
-                  <div class="issue-fields">
-                    <div>
-                      <label>Biaya (Rp)</label>
-                      <input type="number" inputmode="numeric" class="issue-cost" value="${issue.cost || ""}" placeholder="0" />
-                    </div>
-                    <div>
-                      <label>Suku cadang</label>
-                      <input type="text" class="issue-parts" value="${issue.parts_used || ""}" placeholder="mis. kampas rem" />
-                    </div>
-                  </div>
+                  <label>Biaya (Rp)</label>
+                  <input type="number" inputmode="numeric" class="issue-cost" value="${issue.cost || ""}" placeholder="0" />
+                  <label>Vendor</label>
+                  <input type="text" class="issue-vendor" value="${issue.vendor_name || ""}" placeholder="Nama bengkel/vendor" />
+                  <label>Suku cadang</label>
+                  <input type="text" class="issue-parts" value="${issue.parts_used || ""}" placeholder="mis. kampas rem" />
                 </div>
               `)
               .join("")}
-          </div>
-          <div class="card-section">
-            <label>Vendor</label>
-            <input type="text" class="repair-vendor" placeholder="Nama bengkel/vendor" />
           </div>
           <button class="primary btn-complete">Simpan</button>
         </div>
@@ -243,13 +230,10 @@ async function loadRepairs() {
         const issues = [...card.querySelectorAll(".issue-edit-row")].map((row) => ({
           id: row.dataset.issueId,
           cost: row.querySelector(".issue-cost").value,
+          vendor_name: row.querySelector(".issue-vendor").value,
           parts_used: row.querySelector(".issue-parts").value,
         }));
-        await call("complete_repair", {
-          id: card.dataset.id,
-          vendor_name: card.querySelector(".repair-vendor").value,
-          issues,
-        });
+        await call("complete_repair", { id: card.dataset.id, issues });
         toast("Servis dilengkapi.");
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         loadRepairs();
@@ -353,7 +337,6 @@ document.querySelectorAll(".tab").forEach((tab) => {
   const greetName = tg.initDataUnsafe?.user?.first_name;
   document.getElementById("dispatcherName").textContent = greetName ? "Halo, " + greetName : "";
   try {
-    await loadCatalogs();
     await loadRepairs();
   } catch (e) {
     toast("Gagal memuat data: " + e.message);
