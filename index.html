@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Dashboard Dispatcher - PT SKL</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* Same PT SKL brand system as the mechanic Mini App -- matches
+     skl-route-agent/dashboard.html exactly, see that app's own SKILL.md
+     note for the reasoning (2026-08-27 design pass). */
+  :root {
+    --bg: #F5F2EE; --surface: #FFFFFF; --surface2: #F0EBE4; --surface3: #E5DDD3;
+    --border: #E2D9CC; --accent: #8B1A1A; --accent-hover: #6E1414; --accent-dim: #F3E3E3;
+    --text: #2B2420; --muted: #7A6F63; --dim: #B0A594;
+    --green: #1E8449; --red: #B91C1C;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif; --display: 'Fraunces', serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 16px 32px;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px; line-height: 1.5;
+  }
+  h1 {
+    font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--accent);
+    margin: 4px 0 2px;
+  }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab {
+    flex: 1; text-align: center; padding: 10px 4px; font-size: 13px; font-weight: 600;
+    color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
+  select, input, textarea {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .empty { color: var(--dim); text-align: center; padding: 32px 0; font-size: 14px; }
+  .repair-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 12px; overflow: hidden;
+  }
+  .repair-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 16px; cursor: pointer; list-style: none;
+  }
+  .repair-summary::-webkit-details-marker { display: none; }
+  .repair-summary::after {
+    content: "\25B8"; color: var(--muted); font-size: 12px; flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .repair-card[open] .repair-summary::after { transform: rotate(90deg); }
+  .repair-summary .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+  .repair-summary-meta {
+    font-size: 13px; color: var(--muted); text-align: right; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .repair-body { padding: 0 16px 14px; }
+  .card-meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .card-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
+  .issue-edit-row:first-child { border-top: none; padding-top: 0; }
+  .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .issue-edit-row .issue-fields { display: flex; gap: 8px; }
+  .issue-edit-row .issue-fields > div { flex: 1; }
+  .issue-edit-row label { margin: 4px 0 4px; }
+  button.primary {
+    width: 100%; margin-top: 14px; padding: 13px; border: none; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  button.primary:disabled { opacity: 0.5; }
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 12px 16px;
+    border-radius: 8px; background: var(--text); color: var(--bg); font-size: 14px;
+    text-align: center; display: none; z-index: 10;
+  }
+  .not-telegram { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .yard-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .yard-card-title { display: flex; align-items: center; justify-content: space-between; }
+  .yard-card-title .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
+  .yard-card-system { font-size: 13px; color: var(--muted); }
+  .yard-buttons { display: flex; gap: 6px; margin-top: 10px; }
+  .yard-buttons button {
+    flex: 1; padding: 9px 4px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .yard-buttons button.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .yard-buttons button.mismatch { border-color: var(--red); }
+  .yard-mismatch-note { font-size: 12px; color: var(--red); margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div id="notTelegram" class="not-telegram" style="display:none">
+  Buka dashboard ini dari tombol "📋 Buka Dashboard Dispatcher" di chat bot SKL Lapangan, bukan dari browser langsung.
+</div>
+
+<div id="app" style="display:none">
+  <h1>Dashboard Dispatcher</h1>
+  <div class="subtitle" id="dispatcherName"></div>
+
+  <div class="tabs">
+    <div class="tab active" data-screen="repairs">Tinjau Servis</div>
+    <div class="tab" data-screen="yard">Cek Yard</div>
+  </div>
+
+  <div class="screen active" id="screen-repairs">
+    <div id="list-repairs" class="empty">Memuat...</div>
+  </div>
+
+  <div class="screen" id="screen-yard">
+    <div id="list-yard" class="empty">Memuat...</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_URL = "https://kcftvbuwotjjroattdak.supabase.co/functions/v1/dispatcher-api";
+const tg = window.Telegram && window.Telegram.WebApp;
+
+let catalogs = { vendors: [] };
+
+const BUCKET_LABELS = { pool: "Pool", under_repair: "Under repair", at_indahkiat: "At Indahkiat" };
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 2600);
+}
+
+async function call(action, payload) {
+  const resp = await fetch(API_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ initData: tg.initData, action, payload: payload || {} }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(body.error || ("HTTP " + resp.status));
+  return body;
+}
+
+function setScreen(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.screen === name));
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === "screen-" + name));
+  if (name === "repairs") loadRepairs();
+  if (name === "yard") loadYard();
+}
+
+async function loadCatalogs() {
+  const { vendors } = await call("list_catalogs");
+  catalogs = { vendors: vendors || [] };
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })
+    + " " + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function loadRepairs() {
+  const el = document.getElementById("list-repairs");
+  const openIds = new Set(
+    [...el.querySelectorAll("details.repair-card[open]")].map((d) => d.dataset.id),
+  );
+  el.className = "";
+  el.innerHTML = "Memuat...";
+  const { repairs } = await call("list_pending_repairs");
+  if (!repairs || repairs.length === 0) {
+    el.className = "empty";
+    el.innerHTML = "Tidak ada servis yang perlu dilengkapi.";
+    return;
+  }
+  el.innerHTML = repairs
+    .map((r) => {
+      const issues = r.repair_record_issues || [];
+      return `
+      <details class="repair-card" data-id="${r.id}" ${openIds.has(r.id) ? "open" : ""}>
+        <summary class="repair-summary">
+          <span class="truck-id">Truk ${r.truck_id}</span>
+          <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
+        </summary>
+        <div class="repair-body">
+          <div class="card-meta">Mulai ${formatDate(r.downtime_start)} &middot; Status: ${r.status}</div>
+          <div class="card-section">
+            ${issues
+              .map((issue, i) => `
+                <div class="issue-edit-row" data-issue-id="${issue.id}">
+                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
+                  <div class="issue-fields">
+                    <div>
+                      <label>Biaya (Rp)</label>
+                      <input type="number" inputmode="numeric" class="issue-cost" value="${issue.cost || ""}" placeholder="0" />
+                    </div>
+                    <div>
+                      <label>Suku cadang</label>
+                      <input type="text" class="issue-parts" value="${issue.parts_used || ""}" placeholder="mis. kampas rem" />
+                    </div>
+                  </div>
+                </div>
+              `)
+              .join("")}
+          </div>
+          <div class="card-section">
+            <label>Vendor</label>
+            <input type="text" class="repair-vendor" placeholder="Nama bengkel/vendor" />
+          </div>
+          <button class="primary btn-complete">Simpan</button>
+        </div>
+      </details>
+    `;
+    })
+    .join("");
+
+  el.querySelectorAll(".btn-complete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const card = btn.closest(".repair-card");
+      btn.disabled = true;
+      try {
+        const issues = [...card.querySelectorAll(".issue-edit-row")].map((row) => ({
+          id: row.dataset.issueId,
+          cost: row.querySelector(".issue-cost").value,
+          parts_used: row.querySelector(".issue-parts").value,
+        }));
+        await call("complete_repair", {
+          id: card.dataset.id,
+          vendor_name: card.querySelector(".repair-vendor").value,
+          issues,
+        });
+        toast("Servis dilengkapi.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function loadYard() {
+  const el = document.getElementById("list-yard");
+  el.className = "";
+  el.innerHTML = "Memuat...";
+  const { checkins } = await call("list_yard_checkins");
+  if (!checkins || checkins.length === 0) {
+    el.className = "empty";
+    el.innerHTML = "Tidak ada truk untuk dicek hari ini.";
+    return;
+  }
+  el.innerHTML = checkins
+    .map((c) => {
+      const current = c.dispatcher_state || c.system_state;
+      const mismatchNote = c.already_confirmed && !c.matched
+        ? `<div class="yard-mismatch-note">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state} -- berbeda dari konfirmasi</div>`
+        : "";
+      return `
+      <div class="yard-card" data-truck="${c.truck_id}">
+        <div class="yard-card-title">
+          <span class="truck-id">Truk ${c.truck_id}</span>
+          <span class="yard-card-system">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state}</span>
+        </div>
+        <div class="yard-buttons">
+          ${["pool", "under_repair", "at_indahkiat"]
+            .map(
+              (b) =>
+                `<button data-bucket="${b}" class="${current === b ? "selected" : ""} ${b === c.system_state && !c.already_confirmed ? "" : ""}">${BUCKET_LABELS[b]}</button>`,
+            )
+            .join("")}
+        </div>
+        ${mismatchNote}
+      </div>
+    `;
+    })
+    .join("");
+
+  el.querySelectorAll(".yard-card").forEach((card) => {
+    card.querySelectorAll(".yard-buttons button").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        card.querySelectorAll(".yard-buttons button").forEach((b) => b.disabled = true);
+        try {
+          await call("confirm_checkin", { truck_id: card.dataset.truck, dispatcher_state: btn.dataset.bucket });
+          toast("Dikonfirmasi.");
+          if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+          loadYard();
+        } catch (e) {
+          toast("Gagal: " + e.message);
+          card.querySelectorAll(".yard-buttons button").forEach((b) => b.disabled = false);
+        }
+      });
+    });
+  });
+}
+
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => setScreen(tab.dataset.screen));
+});
+
+(async function init() {
+  if (!tg) {
+    document.getElementById("notTelegram").style.display = "block";
+    return;
+  }
+  tg.ready();
+  tg.expand();
+  document.getElementById("app").style.display = "block";
+  const greetName = tg.initDataUnsafe?.user?.first_name;
+  document.getElementById("dispatcherName").textContent = greetName ? "Halo, " + greetName : "";
+  try {
+    await loadCatalogs();
+    await loadRepairs();
+  } catch (e) {
+    toast("Gagal memuat data: " + e.message);
+  }
+})();
+</script>
+</body>
+</html>
