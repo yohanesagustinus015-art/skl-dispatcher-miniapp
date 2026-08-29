@@ -94,15 +94,20 @@
   .yard-card-title { display: flex; align-items: center; justify-content: space-between; }
   .yard-card-title .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
   .yard-card-system { font-size: 13px; color: var(--muted); }
-  .yard-buttons { display: flex; gap: 6px; margin-top: 10px; }
+  /* 2x2 grid, not a 4-wide flex row -- 4 buttons across one row on a
+     phone screen made "Under repair"/"At Indahkiat" wrap and cramp, same
+     lesson as the tab-label fix in the mechanic app (shorten/reflow
+     instead of shrinking font past readable). */
+  .yard-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
   .yard-buttons button {
-    flex: 1; padding: 9px 4px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 600;
+    padding: 9px 4px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text); font-size: 13px; font-weight: 600;
     cursor: pointer;
   }
   .yard-buttons button.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .yard-buttons button.mismatch { border-color: var(--red); }
   .yard-mismatch-note { font-size: 12px; color: var(--red); margin-top: 6px; }
+  .yard-note-form { margin-top: 10px; }
+  .yard-note-form textarea { min-height: 50px; }
 </style>
 </head>
 <body>
@@ -137,7 +142,7 @@ const tg = window.Telegram && window.Telegram.WebApp;
 
 let catalogs = { vendors: [] };
 
-const BUCKET_LABELS = { pool: "Pool", under_repair: "Under repair", at_indahkiat: "At Indahkiat" };
+const BUCKET_LABELS = { pool: "Pool", under_repair: "Under repair", at_indahkiat: "At Indahkiat", lainnya: "Lainnya" };
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -270,7 +275,7 @@ async function loadYard() {
     .map((c) => {
       const current = c.dispatcher_state || c.system_state;
       const mismatchNote = c.already_confirmed && !c.matched
-        ? `<div class="yard-mismatch-note">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state} -- berbeda dari konfirmasi</div>`
+        ? `<div class="yard-mismatch-note">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state}${c.note ? " -- " + c.note : " -- berbeda dari konfirmasi"}</div>`
         : "";
       return `
       <div class="yard-card" data-truck="${c.truck_id}">
@@ -279,12 +284,14 @@ async function loadYard() {
           <span class="yard-card-system">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state}</span>
         </div>
         <div class="yard-buttons">
-          ${["pool", "under_repair", "at_indahkiat"]
-            .map(
-              (b) =>
-                `<button data-bucket="${b}" class="${current === b ? "selected" : ""} ${b === c.system_state && !c.already_confirmed ? "" : ""}">${BUCKET_LABELS[b]}</button>`,
-            )
+          ${["pool", "under_repair", "at_indahkiat", "lainnya"]
+            .map((b) => `<button data-bucket="${b}" class="${current === b ? "selected" : ""}">${BUCKET_LABELS[b]}</button>`)
             .join("")}
+        </div>
+        <div class="yard-note-form" style="display:none">
+          <label>Catatan (wajib untuk Lainnya)</label>
+          <textarea class="yard-note-input" placeholder="Jelaskan kondisi truk ini..."></textarea>
+          <button class="primary btn-yard-note-submit">Konfirmasi</button>
         </div>
         ${mismatchNote}
       </div>
@@ -293,19 +300,40 @@ async function loadYard() {
     .join("");
 
   el.querySelectorAll(".yard-card").forEach((card) => {
+    const noteForm = card.querySelector(".yard-note-form");
+
+    const submit = async (bucket, note) => {
+      card.querySelectorAll(".yard-buttons button, .btn-yard-note-submit").forEach((b) => (b.disabled = true));
+      try {
+        await call("confirm_checkin", { truck_id: card.dataset.truck, dispatcher_state: bucket, note });
+        toast("Dikonfirmasi.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadYard();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        card.querySelectorAll(".yard-buttons button, .btn-yard-note-submit").forEach((b) => (b.disabled = false));
+      }
+    };
+
     card.querySelectorAll(".yard-buttons button").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        card.querySelectorAll(".yard-buttons button").forEach((b) => b.disabled = true);
-        try {
-          await call("confirm_checkin", { truck_id: card.dataset.truck, dispatcher_state: btn.dataset.bucket });
-          toast("Dikonfirmasi.");
-          if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-          loadYard();
-        } catch (e) {
-          toast("Gagal: " + e.message);
-          card.querySelectorAll(".yard-buttons button").forEach((b) => b.disabled = false);
+      btn.addEventListener("click", () => {
+        if (btn.dataset.bucket === "lainnya") {
+          noteForm.style.display = "block";
+          card.querySelector(".yard-note-input").focus();
+          return;
         }
+        noteForm.style.display = "none";
+        submit(btn.dataset.bucket, null);
       });
+    });
+
+    card.querySelector(".btn-yard-note-submit").addEventListener("click", () => {
+      const note = card.querySelector(".yard-note-input").value.trim();
+      if (!note) {
+        toast("Catatan wajib diisi untuk Lainnya.");
+        return;
+      }
+      submit("lainnya", note);
     });
   });
 }
