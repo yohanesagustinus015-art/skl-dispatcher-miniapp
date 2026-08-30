@@ -71,6 +71,7 @@
   .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
   .issue-edit-row:first-child { border-top: none; padding-top: 0; }
   .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 500; font-family: var(--sans); color: var(--muted); background: var(--surface2); border-radius: 10px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; }
   .issue-edit-row label { margin: 4px 0 4px; }
   button.primary {
     width: 100%; margin-top: 14px; padding: 13px; border: none; border-radius: 8px;
@@ -144,6 +145,19 @@ const BUCKET_LABELS = { pool: "Pool", under_repair: "Sedang diperbaiki", at_inda
 // 2026-08-29: "status: 'xxx' should have xx be in bahasa indonesia."
 const STATUS_LABELS = { open: "Sedang dikerjakan", pending_signoff: "Menunggu sign-off", signed_off: "Sudah sign-off" };
 
+// Per-issue lifecycle (2026-08-30 schema extension: repair_record_issues.status),
+// separate from the session-level STATUS_LABELS above. Shown as a small badge
+// per issue so dispatcher can see/verify it without a separate screen.
+const ISSUE_STATUS_LABELS = {
+  reported: "Dilaporkan",
+  diagnosed: "Terdiagnosis",
+  request_for_parts: "Minta suku cadang",
+  vendor_selected: "Vendor dipilih",
+  in_progress: "Sedang diperbaiki",
+  done: "Selesai",
+  verified: "Terverifikasi",
+};
+
 function toast(msg) {
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -204,7 +218,7 @@ async function loadRepairs() {
             ${issues
               .map((issue, i) => `
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
-                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
+                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
                   <label>Biaya (Rp)</label>
                   <input type="number" inputmode="numeric" class="issue-cost" value="${issue.cost || ""}" placeholder="0" />
                   <label>Vendor</label>
