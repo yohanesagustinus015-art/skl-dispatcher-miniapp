@@ -219,10 +219,6 @@ async function loadRepairs() {
               .map((issue, i) => `
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
                   <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
-                  <label>Biaya (Rp)</label>
-                  <input type="number" inputmode="numeric" class="issue-cost" value="${issue.cost || ""}" placeholder="0" />
-                  <label>Vendor</label>
-                  <input type="text" class="issue-vendor" value="${issue.vendor_name || ""}" placeholder="Nama bengkel/vendor" />
                   <label>Suku cadang</label>
                   <input type="text" class="issue-parts" value="${issue.parts_used || ""}" placeholder="mis. kampas rem" />
                 </div>
@@ -243,8 +239,6 @@ async function loadRepairs() {
       try {
         const issues = [...card.querySelectorAll(".issue-edit-row")].map((row) => ({
           id: row.dataset.issueId,
-          cost: row.querySelector(".issue-cost").value,
-          vendor_name: row.querySelector(".issue-vendor").value,
           parts_used: row.querySelector(".issue-parts").value,
         }));
         await call("complete_repair", { id: card.dataset.id, issues });
