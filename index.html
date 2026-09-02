@@ -50,16 +50,21 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     margin-bottom: 12px; overflow: hidden;
   }
-  .repair-summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    padding: 14px 16px; cursor: pointer; list-style: none;
-  }
+  /* display:flex directly on <summary> is unreliable in Safari (same
+     real bug found and fixed in mekanik-miniapp, 2026-09-03 -- Android/
+     Chromium is the only engine that reliably flexes a <summary> itself).
+     Flex layout lives on .repair-summary-row, an ordinary <div> nested
+     inside the summary, instead. */
+  .repair-summary { display: block; padding: 14px 16px; cursor: pointer; list-style: none; }
   .repair-summary::-webkit-details-marker { display: none; }
-  .repair-summary::after {
+  .repair-summary-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .repair-summary-row::after {
     content: "\25B8"; color: var(--muted); font-size: 12px; flex-shrink: 0;
     transition: transform 0.15s;
   }
-  .repair-card[open] .repair-summary::after { transform: rotate(90deg); }
+  .repair-card[open] .repair-summary-row::after { transform: rotate(90deg); }
   .repair-summary .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
   .repair-summary-meta {
     font-size: 13px; color: var(--muted); text-align: right; overflow: hidden;
@@ -192,27 +197,52 @@ function formatDate(iso) {
     + " " + d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Direct feedback, 2026-09-02: same load-speed pass already done on
+// mekanik-miniapp (prefetch + cache + combined backend call). Track
+// whether each list has ever loaded so only the very first load wipes
+// to "Memuat..." -- later refreshes (tab click, or after a mutating
+// action) keep showing the last-known content while quietly
+// refreshing behind it. See renderRepairs' own className comment for
+// a real bug that pattern needs to watch for.
+let repairsLoaded = false;
+
 async function loadRepairs() {
+  const el = document.getElementById("list-repairs");
+  if (!repairsLoaded) {
+    el.className = "";
+    el.innerHTML = "Memuat...";
+  }
+  const { repairs } = await call("list_pending_repairs");
+  renderRepairs(repairs);
+}
+
+function renderRepairs(repairs) {
   const el = document.getElementById("list-repairs");
   const openIds = new Set(
     [...el.querySelectorAll("details.repair-card[open]")].map((d) => d.dataset.id),
   );
-  el.className = "";
-  el.innerHTML = "Memuat...";
-  const { repairs } = await call("list_pending_repairs");
+  repairsLoaded = true;
   if (!repairs || repairs.length === 0) {
     el.className = "empty";
     el.innerHTML = "Tidak ada servis yang perlu dilengkapi.";
     return;
   }
+  // Real bug this pattern can hit if skipped (found in mekanik-miniapp,
+  // 2026-09-03, from a screenshot): className must be reset here, not
+  // just before the very first fetch -- otherwise a list that was ever
+  // empty (className="empty", center-aligned) and later gets real
+  // content keeps showing centered text with the new content in it.
+  el.className = "";
   el.innerHTML = repairs
     .map((r) => {
       const issues = r.repair_record_issues || [];
       return `
       <details class="repair-card" data-id="${r.id}" ${openIds.has(r.id) ? "open" : ""}>
         <summary class="repair-summary">
-          <span class="truck-id">Truk ${r.truck_id}</span>
-          <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
+          <div class="repair-summary-row">
+            <span class="truck-id">Truk ${r.truck_id}</span>
+            <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
+          </div>
         </summary>
         <div class="repair-body">
           <div class="card-meta">Mulai ${formatDate(r.downtime_start)} &middot; Status: ${STATUS_LABELS[r.status] || r.status}</div>
@@ -285,16 +315,27 @@ async function loadRepairs() {
   });
 }
 
+let yardLoaded = false;
+
 async function loadYard() {
   const el = document.getElementById("list-yard");
-  el.className = "";
-  el.innerHTML = "Memuat...";
+  if (!yardLoaded) {
+    el.className = "";
+    el.innerHTML = "Memuat...";
+  }
   const { checkins } = await call("list_yard_checkins");
+  renderYard(checkins);
+}
+
+function renderYard(checkins) {
+  const el = document.getElementById("list-yard");
+  yardLoaded = true;
   if (!checkins || checkins.length === 0) {
     el.className = "empty";
     el.innerHTML = "Tidak ada truk untuk dicek hari ini.";
     return;
   }
+  el.className = "";
   el.innerHTML = checkins
     .map((c) => {
       const current = c.dispatcher_state || c.system_state;
@@ -376,8 +417,14 @@ document.querySelectorAll(".tab").forEach((tab) => {
   document.getElementById("app").style.display = "block";
   const greetName = tg.initDataUnsafe?.user?.first_name;
   document.getElementById("dispatcherName").textContent = greetName ? "Halo, " + greetName : "";
+  // Combined single request (2026-09-02, same fix as mekanik-miniapp):
+  // one init_data call instead of two separate round trips
+  // (list_pending_repairs + list_yard_checkins), rendering both tabs
+  // immediately from the one response.
   try {
-    await loadRepairs();
+    const { repairs, checkins } = await call("init_data");
+    renderRepairs(repairs);
+    renderYard(checkins);
   } catch (e) {
     toast("Gagal memuat data: " + e.message);
   }
