@@ -87,6 +87,16 @@
   .status-chip-pending_signoff { background: #FCEFD8; color: #9A5B0A; }
   .status-chip-signed_off { background: #E1F0E6; color: var(--green); }
   .repair-body { padding: 0 16px 14px; }
+  /* Plain (non-collapsible) card -- new for the dedicated Sign-off tab
+     (2026-09-03: 'dispatcher should have the same Sign-off tab as
+     mechanic'), same box as .repair-card but without the <details>
+     collapse since a sign-off card has nothing worth hiding. */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+  .issue-row { padding: 6px 0; font-size: 14px; }
   .card-meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
   .card-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
   .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
@@ -146,11 +156,16 @@
 
   <div class="tabs">
     <div class="tab active" data-screen="repairs">Tinjau Servis</div>
+    <div class="tab" data-screen="signoff">Sign-off</div>
     <div class="tab" data-screen="yard">Cek Yard</div>
   </div>
 
   <div class="screen active" id="screen-repairs">
     <div id="list-repairs" class="empty">Memuat...</div>
+  </div>
+
+  <div class="screen" id="screen-signoff">
+    <div id="list-signoff" class="empty">Memuat...</div>
   </div>
 
   <div class="screen" id="screen-yard">
@@ -224,22 +239,38 @@ function formatDate(iso) {
 // a real bug that pattern needs to watch for.
 let repairsLoaded = false;
 
+// Single combined fetch feeds both Tinjau Servis and Sign-off --
+// direct instruction 2026-09-03: "dispatcher should have the same
+// Sign-off tab as mechanic for all things that only require sign
+// off." fetchActiveRepairs already returns every repair not yet
+// signed_off (open AND pending_signoff together, see that function's
+// own comment); split here by status instead of adding a second
+// backend action/round trip, since the data's already all there.
 async function loadRepairs() {
-  const el = document.getElementById("list-repairs");
+  const openEl = document.getElementById("list-repairs");
+  const signoffEl = document.getElementById("list-signoff");
   if (!repairsLoaded) {
-    el.className = "";
-    el.innerHTML = "Memuat...";
+    openEl.className = "";
+    openEl.innerHTML = "Memuat...";
+    signoffEl.className = "";
+    signoffEl.innerHTML = "Memuat...";
   }
   const { repairs } = await call("list_pending_repairs");
   renderRepairs(repairs);
 }
 
 function renderRepairs(repairs) {
+  repairsLoaded = true;
+  const all = repairs || [];
+  renderOpenRepairs(all.filter((r) => r.status === "open"));
+  renderSignoffRepairs(all.filter((r) => r.status === "pending_signoff"));
+}
+
+function renderOpenRepairs(repairs) {
   const el = document.getElementById("list-repairs");
   const openIds = new Set(
     [...el.querySelectorAll("details.repair-card[open]")].map((d) => d.dataset.id),
   );
-  repairsLoaded = true;
   if (!repairs || repairs.length === 0) {
     el.className = "empty";
     el.innerHTML = "Tidak ada servis yang perlu dilengkapi.";
@@ -271,6 +302,8 @@ function renderRepairs(repairs) {
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
                   <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
                   ${(() => {
+                    if (issue.status === "done" || issue.status === "verified") return "";
+                    const blocks = [];
                     // 2026-08-31, direct feedback: dispatcher often
                     // receives incoming deliveries, so may see a part
                     // arrive before the mechanic does -- let them
@@ -279,42 +312,32 @@ function renderRepairs(repairs) {
                       const quotes = issue.vendor_quotes || [];
                       const approved = quotes.find((q) => q.is_selected && q.approved_by_owner);
                       if (approved) {
-                        return `<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`;
+                        blocks.push(`<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`);
+                      } else {
+                        const selected = quotes.find((q) => q.is_selected);
+                        blocks.push(`<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`);
                       }
-                      const selected = quotes.find((q) => q.is_selected);
-                      return `<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`;
                     }
-                    // Redefined 2026-09-02, direct instruction: "Farman
-                    // should only be able to request for parts, not
-                    // close out repairs." Per-issue submit (same reason
-                    // mekanik-miniapp's own request-parts button is
-                    // per-issue, not batched -- see that app's comment):
-                    // only offered while an issue is still at its
-                    // starting 'reported' state, matching request_parts'
-                    // own server-side gate. Anything past that is read-
-                    // only here; dispatcher no longer has a way to push
-                    // an issue to 'done' at all.
-                    if (issue.status === "reported") {
-                      return `
-                        <label>Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)</label>
-                        <input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" />
-                        <button class="btn-request-parts">Ajukan Permintaan Suku Cadang</button>
-                      `;
-                    }
-                    return issue.parts_used ? `<div class="issue-vendor-note">Suku cadang: ${issue.parts_used}</div>` : "";
+                    // Redefined 2026-09-03, direct instruction: callable
+                    // repeatedly for any status short of done/verified
+                    // (was: only ever once, at 'reported') -- "needs to
+                    // be allowed multiple times ... in case they forget
+                    // to type something ... even while sedang
+                    // dikerjakan." Shows what's already been requested
+                    // so a repeat submission reads as adding to it.
+                    const already = issue.parts_used ? `<div class="issue-vendor-note">Sudah diajukan: ${issue.parts_used}</div>` : "";
+                    blocks.push(`
+                      ${already}
+                      <label>${issue.parts_used ? "Tambah suku cadang lain (opsional)" : "Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)"}</label>
+                      <input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" />
+                      <button class="btn-request-parts">${issue.parts_used ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
+                    `);
+                    return blocks.join("");
                   })()}
                 </div>
               `)
               .join("")}
           </div>
-          ${r.status === "pending_signoff" ? `
-          <div class="card-section signoff-section" data-id="${r.id}">
-            <div class="card-meta">${r.repaired_by_mechanic ? "Dikerjakan oleh " + r.repaired_by_mechanic.name + " -- " : ""}menunggu sign-off mekanik lain.</div>
-            <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
-            <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
-            <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
-          </div>
-          ` : ""}
         </div>
       </details>
     `;
@@ -359,6 +382,47 @@ function renderRepairs(repairs) {
       }
     });
   });
+
+}
+
+// Dedicated Sign-off tab (2026-09-03, direct instruction: "dispatcher
+// should have the same Sign-off tab as mechanic for all things that
+// only require sign off"). Was previously a section embedded inside a
+// Tinjau Servis card when status happened to be pending_signoff --
+// pulled out into its own tab/screen to match the mechanic app's own
+// split (Diperbaiki vs Sign-off), so a dispatcher scanning for what
+// needs a decision doesn't have to open every Tinjau Servis card to
+// find the ones actually awaiting sign-off.
+function renderSignoffRepairs(repairs) {
+  const el = document.getElementById("list-signoff");
+  if (!repairs || repairs.length === 0) {
+    el.className = "empty";
+    el.innerHTML = "Tidak ada servis menunggu sign-off.";
+    return;
+  }
+  el.className = "";
+  el.innerHTML = repairs
+    .map((r) => {
+      const issues = r.repair_record_issues || [];
+      return `
+      <div class="card" data-id="${r.id}">
+        <div class="card-title">
+          <span class="truck-id">Truk ${r.truck_id}</span>
+          <span class="status-chip status-chip-pending_signoff">${STATUS_LABELS.pending_signoff}</span>
+        </div>
+        <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}${r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : ""}</div>
+        <div class="card-section">
+          ${issues.map((i) => `<div class="issue-row">${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
+        </div>
+        <div class="card-section signoff-section" data-id="${r.id}">
+          <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
+          <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
+          <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
+        </div>
+      </div>
+    `;
+    })
+    .join("");
 
   // New, direct instruction 2026-09-02: dispatcher can sign off a
   // repair the mechanic already marked done, but only with a typed
