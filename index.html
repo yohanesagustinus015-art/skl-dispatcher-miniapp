@@ -79,6 +79,8 @@
   .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 500; font-family: var(--sans); color: var(--muted); background: var(--surface2); border-radius: 10px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; }
   .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
   .btn-start-progress { width: 100%; margin: 4px 0 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-request-parts { width: 100%; margin-top: 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .signoff-section textarea { min-height: 60px; }
   .issue-edit-row label { margin: 4px 0 4px; }
   button.primary {
     width: 100%; margin-top: 14px; padding: 13px; border: none; border-radius: 8px;
@@ -256,22 +258,46 @@ function renderRepairs(repairs) {
                     // receives incoming deliveries, so may see a part
                     // arrive before the mechanic does -- let them
                     // trigger Mulai Perbaikan too, same approval gate.
-                    if (issue.status !== "vendor_selected") return "";
-                    const quotes = issue.vendor_quotes || [];
-                    const approved = quotes.find((q) => q.is_selected && q.approved_by_owner);
-                    if (approved) {
-                      return `<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`;
+                    if (issue.status === "vendor_selected") {
+                      const quotes = issue.vendor_quotes || [];
+                      const approved = quotes.find((q) => q.is_selected && q.approved_by_owner);
+                      if (approved) {
+                        return `<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`;
+                      }
+                      const selected = quotes.find((q) => q.is_selected);
+                      return `<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`;
                     }
-                    const selected = quotes.find((q) => q.is_selected);
-                    return `<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`;
+                    // Redefined 2026-09-02, direct instruction: "Farman
+                    // should only be able to request for parts, not
+                    // close out repairs." Per-issue submit (same reason
+                    // mekanik-miniapp's own request-parts button is
+                    // per-issue, not batched -- see that app's comment):
+                    // only offered while an issue is still at its
+                    // starting 'reported' state, matching request_parts'
+                    // own server-side gate. Anything past that is read-
+                    // only here; dispatcher no longer has a way to push
+                    // an issue to 'done' at all.
+                    if (issue.status === "reported") {
+                      return `
+                        <label>Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)</label>
+                        <input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" />
+                        <button class="btn-request-parts">Ajukan Permintaan Suku Cadang</button>
+                      `;
+                    }
+                    return issue.parts_used ? `<div class="issue-vendor-note">Suku cadang: ${issue.parts_used}</div>` : "";
                   })()}
-                  <label>Suku cadang</label>
-                  <input type="text" class="issue-parts" value="${issue.parts_used || ""}" placeholder="mis. kampas rem" />
                 </div>
               `)
               .join("")}
           </div>
-          <button class="primary btn-complete">Simpan</button>
+          ${r.status === "pending_signoff" ? `
+          <div class="card-section signoff-section" data-id="${r.id}">
+            <div class="card-meta">${r.repaired_by_mechanic ? "Dikerjakan oleh " + r.repaired_by_mechanic.name + " -- " : ""}menunggu sign-off mekanik lain.</div>
+            <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
+            <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
+            <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
+          </div>
+          ` : ""}
         </div>
       </details>
     `;
@@ -294,17 +320,44 @@ function renderRepairs(repairs) {
     });
   });
 
-  el.querySelectorAll(".btn-complete").forEach((btn) => {
+  // Per-issue, mirrors mekanik-miniapp's own request-parts button --
+  // see the template's own comment for why this replaced the old
+  // whole-card btn-complete.
+  el.querySelectorAll(".btn-request-parts").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      const row = btn.closest(".issue-edit-row");
       const card = btn.closest(".repair-card");
       btn.disabled = true;
       try {
-        const issues = [...card.querySelectorAll(".issue-edit-row")].map((row) => ({
-          id: row.dataset.issueId,
-          parts_used: row.querySelector(".issue-parts").value,
-        }));
-        await call("complete_repair", { id: card.dataset.id, issues });
-        toast("Servis dilengkapi.");
+        await call("request_parts", {
+          repair_record_id: card.dataset.id,
+          issues: [{ id: row.dataset.issueId, parts_used: row.querySelector(".issue-parts-needed").value }],
+        });
+        toast("Permintaan suku cadang diajukan.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // New, direct instruction 2026-09-02: dispatcher can sign off a
+  // repair the mechanic already marked done, but only with a typed
+  // reason -- refused client-side (and server-side too) if empty.
+  el.querySelectorAll(".btn-dispatcher-signoff").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const section = btn.closest(".signoff-section");
+      const reason = section.querySelector(".signoff-reason").value.trim();
+      if (!reason) {
+        toast("Alasan wajib diisi -- kenapa mekanik lain tidak bisa konfirmasi sendiri?");
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await call("dispatcher_sign_off", { id: section.dataset.id, reason });
+        toast("Sign-off tercatat.");
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         loadRepairs();
       } catch (e) {
