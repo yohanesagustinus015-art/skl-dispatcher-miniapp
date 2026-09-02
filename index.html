@@ -70,6 +70,22 @@
     font-size: 13px; color: var(--muted); text-align: right; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
+  /* Direct feedback, 2026-09-02: "make it apparent which ones are
+     complete (mechanic closed, awaiting sign-off only) and which are
+     ongoing" -- status used to only show as plain text buried inside
+     the expanded card body (Status: ...), invisible in the collapsed
+     list a dispatcher actually scans. Now a chip on the summary row
+     itself, colored so pending_signoff visibly stands out as the one
+     that needs dispatcher attention (sign off, or wait for a real
+     mechanic) versus open (still being worked, nothing for dispatcher
+     to do but request parts if asked). */
+  .status-chip {
+    display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; font-family: var(--sans);
+  }
+  .status-chip-open { background: var(--surface2); color: var(--muted); }
+  .status-chip-pending_signoff { background: #FCEFD8; color: #9A5B0A; }
+  .status-chip-signed_off { background: #E1F0E6; color: var(--green); }
   .repair-body { padding: 0 16px 14px; }
   .card-meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
   .card-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -245,9 +261,10 @@ function renderRepairs(repairs) {
             <span class="truck-id">Truk ${r.truck_id}</span>
             <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
           </div>
+          <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
         </summary>
         <div class="repair-body">
-          <div class="card-meta">Mulai ${formatDate(r.downtime_start)} &middot; Status: ${STATUS_LABELS[r.status] || r.status}</div>
+          <div class="card-meta">Mulai ${formatDate(r.downtime_start)}</div>
           <div class="card-section">
             ${issues
               .map((issue, i) => `
