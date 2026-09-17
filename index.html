@@ -27,9 +27,16 @@
     font-size: 15px; line-height: 1.5;
   }
   h1 {
-    font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--accent);
-    margin: 4px 0 2px;
+    font-family: var(--display); font-size: 24px; font-weight: 700; color: var(--accent);
+    letter-spacing: -0.01em; margin: 4px 0 2px;
   }
+  /* UI/UX pass, 2026-09-17: the truck id is the one thing a dispatcher
+     scans for first on every card (three separate lists, all keyed by
+     truck) but previously had no more visual weight than the meta text
+     next to it -- same 13px size bracket as everything else. Bumped to
+     its own size, tightened letter-spacing (mono faces read loose at
+     small sizes without it). */
+  .truck-id { font-size: 15px; letter-spacing: -0.01em; }
   .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
   /* UI/UX pass, 2026-09-17, direct feedback ("the ui/ux is kinda bad,
      apple treatment it"): sliding-pill segmented control replacing the
@@ -64,6 +71,7 @@
   @media (prefers-reduced-motion: reduce) {
     .screen.active, .repair-card, .card, .yard-card { animation: none !important; }
     .tab-indicator, .tab, button, .toast { transition: none !important; }
+    .skeleton-line::after { animation: none !important; }
   }
   label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
   select, input, textarea {
@@ -72,6 +80,29 @@
   }
   select:focus, input:focus, textarea:focus { outline: none; border-color: var(--accent); }
   .empty { color: var(--dim); text-align: center; padding: 32px 0; font-size: 14px; }
+  .empty svg { display: block; margin: 0 auto 10px; opacity: 0.55; }
+  /* UI/UX pass, 2026-09-17: replaces the plain "Memuat..." text with a
+     shimmering placeholder shaped like the card it's about to become --
+     the shape itself previews the layout, and the shimmer reads as
+     "actively working" rather than a static word sitting on screen. */
+  .skeleton-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; margin-bottom: 12px;
+  }
+  .skeleton-line {
+    height: 12px; border-radius: 6px; background: var(--surface2);
+    margin-bottom: 8px; overflow: hidden; position: relative;
+  }
+  .skeleton-line:last-child { margin-bottom: 0; }
+  .skeleton-line::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    transform: translateX(-100%); animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer { to { transform: translateX(100%); } }
+  .skeleton-line.w40 { width: 40%; }
+  .skeleton-line.w60 { width: 60%; }
+  .skeleton-line.w80 { width: 80%; }
   /* UI/UX pass, 2026-09-17: softer radius + a real (if subtle) shadow
      in place of the old flat 1px-border-only card -- gives cards actual
      depth instead of reading as outlined rectangles. cardIn (defined
@@ -142,7 +173,21 @@
   .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
   .issue-edit-row:first-child { border-top: none; padding-top: 0; }
   .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 500; font-family: var(--sans); color: var(--muted); background: var(--surface2); border-radius: 10px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; }
+  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; }
+  /* UI/UX pass, 2026-09-17: every lifecycle stage used to share this ONE
+     gray badge regardless of meaning -- a dispatcher scanning a card
+     couldn't tell "still needs parts" from "verified and done" without
+     reading the label text itself. Same 3-color semantic system
+     status-chip already uses one level up (session status), applied
+     here per-issue: neutral (nothing to act on yet), amber (waiting on
+     someone/something external), accent (actively being worked),
+     green (functionally finished). An unrecognized status still falls
+     back to the neutral look via the bare .issue-status-badge rule
+     above, since ${issue.status} always appends SOME class name here. */
+  .issue-status-badge-reported, .issue-status-badge-diagnosed { background: var(--surface2); color: var(--muted); }
+  .issue-status-badge-request_for_parts, .issue-status-badge-vendor_selected { background: #FCEFD8; color: #9A5B0A; }
+  .issue-status-badge-in_progress { background: var(--accent-dim); color: var(--accent); }
+  .issue-status-badge-done, .issue-status-badge-verified { background: #E1F0E6; color: var(--green); }
   .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
   .btn-start-progress { width: 100%; margin: 4px 0 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
   .btn-request-parts { width: 100%; margin-top: 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -222,15 +267,24 @@
   </div>
 
   <div class="screen active" id="screen-repairs">
-    <div id="list-repairs" class="empty">Memuat...</div>
+    <div id="list-repairs">
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
+    </div>
   </div>
 
   <div class="screen" id="screen-signoff">
-    <div id="list-signoff" class="empty">Memuat...</div>
+    <div id="list-signoff">
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
+    </div>
   </div>
 
   <div class="screen" id="screen-yard">
-    <div id="list-yard" class="empty">Memuat...</div>
+    <div id="list-yard">
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div></div>
+      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div></div>
+    </div>
   </div>
 </div>
 
@@ -264,6 +318,24 @@ const ISSUE_STATUS_LABELS = {
   done: "Selesai",
   verified: "Terverifikasi",
 };
+
+// UI/UX pass, 2026-09-17: N shimmering placeholder cards, shaped like
+// the real card they're standing in for (a couple of lines of varying
+// width), instead of the plain "Memuat..." word this replaced. Used
+// both in the static initial markup (see screen-repairs/-signoff/-yard
+// above) and here in JS for later refreshes that still show a loading
+// state (see repairsLoaded/yardLoaded's own comments for when that is).
+function skeletonHtml(n) {
+  return Array.from({ length: n })
+    .map(() => `<div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>`)
+    .join("");
+}
+
+// A plain checkmark-circle, not a photo or a specific object -- every
+// empty state here means "nothing needs your attention right now,"
+// the same idea regardless of which tab, so one icon covers all three
+// rather than commissioning a distinct illustration per screen.
+const EMPTY_ICON = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9.5"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -326,9 +398,9 @@ async function loadRepairs() {
   const signoffEl = document.getElementById("list-signoff");
   if (!repairsLoaded) {
     openEl.className = "";
-    openEl.innerHTML = "Memuat...";
+    openEl.innerHTML = skeletonHtml(2);
     signoffEl.className = "";
-    signoffEl.innerHTML = "Memuat...";
+    signoffEl.innerHTML = skeletonHtml(1);
   }
   const { repairs } = await call("list_pending_repairs");
   renderRepairs(repairs);
@@ -348,7 +420,7 @@ function renderOpenRepairs(repairs) {
   );
   if (!repairs || repairs.length === 0) {
     el.className = "empty";
-    el.innerHTML = "Tidak ada servis yang perlu dilengkapi.";
+    el.innerHTML = EMPTY_ICON + "Tidak ada servis yang perlu dilengkapi.";
     return;
   }
   // Real bug this pattern can hit if skipped (found in mekanik-miniapp,
@@ -375,7 +447,7 @@ function renderOpenRepairs(repairs) {
             ${issues
               .map((issue, i) => `
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
-                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
+                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
                   ${(() => {
                     if (issue.status === "done" || issue.status === "verified") return "";
                     const blocks = [];
@@ -472,7 +544,7 @@ function renderSignoffRepairs(repairs) {
   const el = document.getElementById("list-signoff");
   if (!repairs || repairs.length === 0) {
     el.className = "empty";
-    el.innerHTML = "Tidak ada servis menunggu sign-off.";
+    el.innerHTML = EMPTY_ICON + "Tidak ada servis menunggu sign-off.";
     return;
   }
   el.className = "";
@@ -487,7 +559,7 @@ function renderSignoffRepairs(repairs) {
         </div>
         <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}${r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : ""}</div>
         <div class="card-section">
-          ${issues.map((i) => `<div class="issue-row">${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""} <span class="issue-status-badge">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
+          ${issues.map((i) => `<div class="issue-row">${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""} <span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
         </div>
         <div class="card-section signoff-section" data-id="${r.id}">
           <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
@@ -530,7 +602,7 @@ async function loadYard() {
   const el = document.getElementById("list-yard");
   if (!yardLoaded) {
     el.className = "";
-    el.innerHTML = "Memuat...";
+    el.innerHTML = skeletonHtml(3);
   }
   const { checkins } = await call("list_yard_checkins");
   renderYard(checkins);
@@ -541,7 +613,7 @@ function renderYard(checkins) {
   yardLoaded = true;
   if (!checkins || checkins.length === 0) {
     el.className = "empty";
-    el.innerHTML = "Tidak ada truk untuk dicek hari ini.";
+    el.innerHTML = EMPTY_ICON + "Tidak ada truk untuk dicek hari ini.";
     return;
   }
   el.className = "";
