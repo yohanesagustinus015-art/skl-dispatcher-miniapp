@@ -180,12 +180,22 @@
   }
   .card-title { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 2px; }
   .issue-row { padding: var(--space-2) 0; font-size: 14px; }
+  .issue-row .issue-header { margin-bottom: 0; }
   .card-meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
   .card-section { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
   .issue-edit-row { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
   .issue-edit-row:first-child { border-top: none; padding-top: 0; }
-  .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: var(--space-2); }
-  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px var(--space-2); margin-left: var(--space-1); vertical-align: middle; }
+  /* UI/UX pass 4, 2026-09-17, direct feedback ("the lists are being
+     formatted messy"): the issue name and its status badge used to sit
+     inline in the same text run (name -- description <badge>), which
+     wrapped unpredictably once the name+description got long -- the
+     badge could land mid-sentence on its own line. Splitting them into
+     a two-column flex row instead: name wraps freely on the left,
+     badge stays pinned top-right, same pattern .repair-summary-row
+     already uses one level up for truck-id vs. status-chip. */
+  .issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; }
+  .issue-status-badge { display: inline-block; flex-shrink: 0; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px var(--space-2); vertical-align: middle; }
   /* UI/UX pass, 2026-09-17: every lifecycle stage used to share this ONE
      gray badge regardless of meaning -- a dispatcher scanning a card
      couldn't tell "still needs parts" from "verified and done" without
@@ -202,7 +212,36 @@
   .issue-status-badge-done, .issue-status-badge-verified { background: #E1F0E6; color: var(--green); }
   .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: var(--space-2) 0; }
   .btn-start-progress { width: 100%; margin: var(--space-1) 0 var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
-  .btn-request-parts { width: 100%; margin-top: var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  /* UI/UX pass 4, 2026-09-17, direct feedback ("allow for multiple
+     suku cadang item requests"): was a single text input, so more than
+     one part meant either cramming several names into one field or
+     tapping "Ajukan Tambahan" repeatedly (a separate round trip each
+     time). A boxed sub-form now groups any already-requested items as
+     tags, plus one input per part with a "+ Tambah item lain" row --
+     all rows join into the same comma-separated parts_used string
+     dispatcher-api already expects, so this is a client-only change,
+     one submission either way. The box itself (surface2, own radius)
+     also gives the form a visible edge against the issue text above it
+     instead of everything running together -- part of the same
+     messy-list feedback. */
+  .parts-request { background: var(--surface2); border-radius: 10px; padding: var(--space-3); margin-top: var(--space-2); }
+  .parts-request label { margin: 0 0 var(--space-2); }
+  .parts-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-2); }
+  .parts-tag {
+    display: inline-block; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    font-size: 12px; padding: 2px var(--space-2); border-radius: 999px;
+  }
+  .parts-input-row { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .parts-input-row input { flex: 1; }
+  .btn-remove-part {
+    flex-shrink: 0; width: 36px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  .btn-add-part {
+    display: block; background: none; border: none; color: var(--accent);
+    font-size: 13px; font-weight: 600; padding: 0; margin-bottom: var(--space-2); cursor: pointer;
+  }
+  .btn-request-parts { width: 100%; margin-top: 0; padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
   .signoff-section textarea { min-height: 60px; }
   .issue-edit-row label { margin: var(--space-1) 0; }
   button.primary {
@@ -212,7 +251,14 @@
     -webkit-tap-highlight-color: transparent;
   }
   button.primary:hover { background: var(--accent-hover); }
-  button.primary:disabled { opacity: 0.5; }
+  /* UI/UX pass 4, 2026-09-17, direct feedback ("the ajukan tambahan
+     button seems laggy"): it wasn't actually slow -- disabling
+     .btn-request-parts/.btn-start-progress on click gave NO visible
+     change (only button.primary had its own :disabled dimming), so a
+     tap looked completely ignored for the full round trip. Generic
+     rule now covers every button; paired with the loading-label swap
+     on each handler below, a tap reads as "working" immediately. */
+  button:disabled { opacity: 0.5; cursor: default; }
   /* UI/UX pass, 2026-09-17: every button gets real tap feedback (a
      slight scale-down) instead of only a :hover state, which a
      touchscreen never triggers -- covers .btn-start-progress,
@@ -463,7 +509,10 @@ function renderOpenRepairs(repairs) {
             ${issues
               .map((issue, i) => `
                 <div class="issue-edit-row" data-issue-id="${issue.id}">
-                  <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""} <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span></div>
+                  <div class="issue-header">
+                    <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
+                    <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span>
+                  </div>
                   ${(() => {
                     if (issue.status === "done" || issue.status === "verified") return "";
                     const blocks = [];
@@ -488,12 +537,31 @@ function renderOpenRepairs(repairs) {
                     // to type something ... even while sedang
                     // dikerjakan." Shows what's already been requested
                     // so a repeat submission reads as adding to it.
-                    const already = issue.parts_used ? `<div class="issue-vendor-note">Sudah diajukan: ${issue.parts_used}</div>` : "";
+                    // UI/UX pass 4, 2026-09-17, direct feedback ("allow
+                    // for multiple suku cadang item requests"): already-
+                    // requested items now render as individual tags
+                    // (was one run-on sentence), and the input itself
+                    // supports N rows via "+ Tambah item lain" -- see
+                    // .parts-request's own CSS comment for the full
+                    // reasoning. dispatcher-api still only receives one
+                    // comma-joined parts_used string per submission, so
+                    // no backend change was needed.
+                    const existingParts = issue.parts_used
+                      ? issue.parts_used.split(",").map((s) => s.trim()).filter(Boolean)
+                      : [];
+                    const tags = existingParts.length
+                      ? `<div class="parts-tags">${existingParts.map((p) => `<span class="parts-tag">${p}</span>`).join("")}</div>`
+                      : "";
                     blocks.push(`
-                      ${already}
-                      <label>${issue.parts_used ? "Tambah suku cadang lain (opsional)" : "Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)"}</label>
-                      <input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" />
-                      <button class="btn-request-parts">${issue.parts_used ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
+                      <div class="parts-request">
+                        ${tags}
+                        <label>${existingParts.length ? "Tambah suku cadang lain (opsional)" : "Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)"}</label>
+                        <div class="parts-inputs">
+                          <div class="parts-input-row"><input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" /></div>
+                        </div>
+                        <button type="button" class="btn-add-part">+ Tambah item lain</button>
+                        <button class="btn-request-parts">${existingParts.length ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
+                      </div>
                     `);
                     return blocks.join("");
                   })()}
@@ -511,6 +579,8 @@ function renderOpenRepairs(repairs) {
     btn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Memulai...";
       try {
         await call("start_progress_from_vendor", { id: btn.dataset.issueId });
         toast("Perbaikan dimulai.");
@@ -519,7 +589,25 @@ function renderOpenRepairs(repairs) {
       } catch (e) {
         toast("Gagal: " + e.message);
         btn.disabled = false;
+        btn.textContent = label;
       }
+    });
+  });
+
+  // UI/UX pass 4, 2026-09-17, direct feedback ("allow for multiple
+  // suku cadang item requests"): "+ Tambah item lain" appends another
+  // input row (with its own remove button) directly in the DOM --
+  // no round trip, since this is purely local form state until
+  // "Ajukan..." is actually pressed.
+  el.querySelectorAll(".btn-add-part").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const container = btn.closest(".parts-request").querySelector(".parts-inputs");
+      const row = document.createElement("div");
+      row.className = "parts-input-row";
+      row.innerHTML = '<input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" /><button type="button" class="btn-remove-part" aria-label="Hapus item">&times;</button>';
+      row.querySelector(".btn-remove-part").addEventListener("click", () => row.remove());
+      container.appendChild(row);
+      row.querySelector("input").focus();
     });
   });
 
@@ -530,18 +618,29 @@ function renderOpenRepairs(repairs) {
     btn.addEventListener("click", async () => {
       const row = btn.closest(".issue-edit-row");
       const card = btn.closest(".repair-card");
+      // Every ".issue-parts-needed" input in this issue's box (the
+      // first fixed row plus any "+ Tambah item lain" rows) joins into
+      // one comma-separated string -- dispatcher-api's request_parts
+      // still only takes a single parts_used string per issue per
+      // call, so N items in the form still means one round trip.
+      const values = [...row.querySelectorAll(".issue-parts-needed")]
+        .map((inp) => inp.value.trim())
+        .filter(Boolean);
       btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Mengirim...";
       try {
         await call("request_parts", {
           repair_record_id: card.dataset.id,
-          issues: [{ id: row.dataset.issueId, parts_used: row.querySelector(".issue-parts-needed").value }],
+          issues: [{ id: row.dataset.issueId, parts_used: values.join(", ") }],
         });
-        toast("Permintaan suku cadang diajukan.");
+        toast(values.length > 1 ? `Permintaan ${values.length} item suku cadang diajukan.` : "Permintaan suku cadang diajukan.");
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         loadRepairs();
       } catch (e) {
         toast("Gagal: " + e.message);
         btn.disabled = false;
+        btn.textContent = label;
       }
     });
   });
@@ -575,7 +674,7 @@ function renderSignoffRepairs(repairs) {
         </div>
         <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}${r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : ""}</div>
         <div class="card-section">
-          ${issues.map((i) => `<div class="issue-row">${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""} <span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
+          ${issues.map((i) => `<div class="issue-row"><div class="issue-header"><span>${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""}</span><span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
         </div>
         <div class="card-section signoff-section" data-id="${r.id}">
           <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
@@ -599,6 +698,8 @@ function renderSignoffRepairs(repairs) {
         return;
       }
       btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Mengonfirmasi...";
       try {
         await call("dispatcher_sign_off", { id: section.dataset.id, reason });
         toast("Sign-off tercatat.");
@@ -607,6 +708,7 @@ function renderSignoffRepairs(repairs) {
       } catch (e) {
         toast("Gagal: " + e.message);
         btn.disabled = false;
+        btn.textContent = label;
       }
     });
   });
