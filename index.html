@@ -18,10 +18,22 @@
     --text: #2B2420; --muted: #7A6F63; --dim: #B0A594;
     --green: #1E8449; --red: #B91C1C;
     --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif; --display: 'Fraunces', serif;
+    /* UI/UX pass 3, 2026-09-17, direct feedback ("work on the spacing
+       rhythm"): every padding/margin/gap in this file used to be
+       whatever felt right in the moment -- 4, 6, 9, 10, 13, 14, 18px
+       all appeared, often for values that should have matched (a
+       card's own padding vs. the card next to it). One 4px-based
+       scale now, applied everywhere below; a handful of genuinely
+       different things (the 1-3px optical nudges on h1/card-title
+       baselines, the tab pill's own 3px inset, border widths, the
+       not-telegram fallback's one-off 60px) are deliberately NOT on
+       this scale -- see each one's own comment for why. */
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-7: 32px;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 16px 16px 32px;
+    margin: 0; padding: var(--space-4) var(--space-4) var(--space-7);
     background: var(--bg); color: var(--text);
     font-family: var(--sans);
     font-size: 15px; line-height: 1.5;
@@ -37,7 +49,7 @@
      its own size, tightened letter-spacing (mono faces read loose at
      small sizes without it). */
   .truck-id { font-size: 15px; letter-spacing: -0.01em; }
-  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: var(--space-4); }
   /* UI/UX pass, 2026-09-17, direct feedback ("the ui/ux is kinda bad,
      apple treatment it"): sliding-pill segmented control replacing the
      flat underline tabs. tab-indicator is a real positioned sibling
@@ -45,7 +57,7 @@
      ::before/::after can't be targeted by inline style from script. */
   .tabs {
     position: relative; display: flex; background: var(--surface2);
-    border-radius: 10px; padding: 3px; margin-bottom: 20px;
+    border-radius: 10px; padding: 3px; margin-bottom: var(--space-5);
   }
   .tab-indicator {
     position: absolute; top: 3px; bottom: 3px; left: 3px;
@@ -54,7 +66,7 @@
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); z-index: 0;
   }
   .tab {
-    flex: 1; position: relative; z-index: 1; text-align: center; padding: 9px 4px;
+    flex: 1; position: relative; z-index: 1; text-align: center; padding: var(--space-2) var(--space-1);
     font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
     white-space: nowrap; border-radius: 8px; transition: color 0.2s ease;
     -webkit-tap-highlight-color: transparent;
@@ -73,25 +85,25 @@
     .tab-indicator, .tab, button, .toast { transition: none !important; }
     .skeleton-line::after { animation: none !important; }
   }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
   select, input, textarea {
-    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    width: 100%; padding: var(--space-3); border-radius: 8px; border: 1px solid var(--border);
     background: var(--surface); color: var(--text); font-size: 15px; font-family: inherit;
   }
   select:focus, input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-  .empty { color: var(--dim); text-align: center; padding: 32px 0; font-size: 14px; }
-  .empty svg { display: block; margin: 0 auto 10px; opacity: 0.55; }
+  .empty { color: var(--dim); text-align: center; padding: var(--space-7) 0; font-size: 14px; }
+  .empty svg { display: block; margin: 0 auto var(--space-3); opacity: 0.55; }
   /* UI/UX pass, 2026-09-17: replaces the plain "Memuat..." text with a
      shimmering placeholder shaped like the card it's about to become --
      the shape itself previews the layout, and the shimmer reads as
      "actively working" rather than a static word sitting on screen. */
   .skeleton-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 16px; margin-bottom: 12px;
+    padding: var(--space-4); margin-bottom: var(--space-3);
   }
   .skeleton-line {
     height: 12px; border-radius: 6px; background: var(--surface2);
-    margin-bottom: 8px; overflow: hidden; position: relative;
+    margin-bottom: var(--space-2); overflow: hidden; position: relative;
   }
   .skeleton-line:last-child { margin-bottom: 0; }
   .skeleton-line::after {
@@ -111,7 +123,7 @@
      extra JS needed to trigger it per render. */
   .repair-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    margin-bottom: 12px; overflow: hidden;
+    margin-bottom: var(--space-3); overflow: hidden;
     box-shadow: 0 1px 2px rgba(43, 36, 32, 0.04), 0 2px 10px rgba(43, 36, 32, 0.05);
     animation: cardIn 0.25s ease both;
   }
@@ -121,13 +133,13 @@
      Flex layout lives on .repair-summary-row, an ordinary <div> nested
      inside the summary, instead. */
   .repair-summary {
-    display: block; padding: 14px 16px; cursor: pointer; list-style: none;
+    display: block; padding: var(--space-4); cursor: pointer; list-style: none;
     -webkit-tap-highlight-color: transparent; transition: background 0.15s ease;
   }
   .repair-summary:active { background: var(--surface2); }
   .repair-summary::-webkit-details-marker { display: none; }
   .repair-summary-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   }
   .repair-summary-row::after {
     content: "\25B8"; color: var(--muted); font-size: 12px; flex-shrink: 0;
@@ -149,31 +161,31 @@
      mechanic) versus open (still being worked, nothing for dispatcher
      to do but request parts if asked). */
   .status-chip {
-    display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 10px;
+    display: inline-block; margin-top: var(--space-2); padding: 2px var(--space-2); border-radius: 10px;
     font-size: 11px; font-weight: 600; font-family: var(--sans);
   }
   .status-chip-open { background: var(--surface2); color: var(--muted); }
   .status-chip-pending_signoff { background: #FCEFD8; color: #9A5B0A; }
   .status-chip-signed_off { background: #E1F0E6; color: var(--green); }
-  .repair-body { padding: 0 16px 14px; }
+  .repair-body { padding: 0 var(--space-4) var(--space-4); }
   /* Plain (non-collapsible) card -- new for the dedicated Sign-off tab
      (2026-09-03: 'dispatcher should have the same Sign-off tab as
      mechanic'), same box as .repair-card but without the <details>
      collapse since a sign-off card has nothing worth hiding. */
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 14px 16px; margin-bottom: 12px;
+    padding: var(--space-4); margin-bottom: var(--space-3);
     box-shadow: 0 1px 2px rgba(43, 36, 32, 0.04), 0 2px 10px rgba(43, 36, 32, 0.05);
     animation: cardIn 0.25s ease both;
   }
-  .card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
-  .issue-row { padding: 6px 0; font-size: 14px; }
+  .card-title { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 2px; }
+  .issue-row { padding: var(--space-2) 0; font-size: 14px; }
   .card-meta { font-size: 13px; color: var(--muted); line-height: 1.5; }
-  .card-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
-  .issue-edit-row { padding: 10px 0; border-top: 1px solid var(--border); }
+  .card-section { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+  .issue-edit-row { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
   .issue-edit-row:first-child { border-top: none; padding-top: 0; }
-  .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; }
+  .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; margin-bottom: var(--space-2); }
+  .issue-status-badge { display: inline-block; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px var(--space-2); margin-left: var(--space-1); vertical-align: middle; }
   /* UI/UX pass, 2026-09-17: every lifecycle stage used to share this ONE
      gray badge regardless of meaning -- a dispatcher scanning a card
      couldn't tell "still needs parts" from "verified and done" without
@@ -188,13 +200,13 @@
   .issue-status-badge-request_for_parts, .issue-status-badge-vendor_selected { background: #FCEFD8; color: #9A5B0A; }
   .issue-status-badge-in_progress { background: var(--accent-dim); color: var(--accent); }
   .issue-status-badge-done, .issue-status-badge-verified { background: #E1F0E6; color: var(--green); }
-  .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: 6px 0; }
-  .btn-start-progress { width: 100%; margin: 4px 0 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
-  .btn-request-parts { width: 100%; margin-top: 8px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: var(--space-2) 0; }
+  .btn-start-progress { width: 100%; margin: var(--space-1) 0 var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-request-parts { width: 100%; margin-top: var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
   .signoff-section textarea { min-height: 60px; }
-  .issue-edit-row label { margin: 4px 0 4px; }
+  .issue-edit-row label { margin: var(--space-1) 0; }
   button.primary {
-    width: 100%; margin-top: 14px; padding: 13px; border: none; border-radius: 8px;
+    width: 100%; margin-top: var(--space-4); padding: var(--space-3); border: none; border-radius: 8px;
     background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
     cursor: pointer; transition: background 0.15s, transform 0.1s;
     -webkit-tap-highlight-color: transparent;
@@ -214,8 +226,8 @@
      (toggled via the .show class in the toast() function below) so it
      actually animates in/out instead of snapping. */
   .toast {
-    position: fixed; left: 50%; bottom: 24px; max-width: calc(100% - 32px);
-    padding: 12px 20px; border-radius: 999px; background: var(--text); color: var(--bg);
+    position: fixed; left: 50%; bottom: var(--space-6); max-width: calc(100% - 32px);
+    padding: var(--space-3) var(--space-5); border-radius: 999px; background: var(--text); color: var(--bg);
     font-size: 13.5px; font-weight: 500; text-align: center; z-index: 10;
     box-shadow: 0 6px 20px rgba(43, 36, 32, 0.25);
     opacity: 0; pointer-events: none;
@@ -223,10 +235,14 @@
     transition: opacity 0.2s ease, transform 0.2s ease;
   }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
-  .not-telegram { text-align: center; padding: 60px 20px; color: var(--muted); }
+  /* 60px stays a literal, not a scale step -- this is the one screen
+     that's ALL whitespace (a centered fallback message, nothing else
+     on it), so it wants a deliberately larger breather than any card
+     rhythm value would give it. */
+  .not-telegram { text-align: center; padding: 60px var(--space-5); color: var(--muted); }
   .yard-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 14px 16px; margin-bottom: 10px;
+    padding: var(--space-4); margin-bottom: var(--space-3);
     box-shadow: 0 1px 2px rgba(43, 36, 32, 0.04), 0 2px 10px rgba(43, 36, 32, 0.05);
     animation: cardIn 0.25s ease both;
   }
@@ -237,15 +253,15 @@
      phone screen made "Under repair"/"At Indahkiat" wrap and cramp, same
      lesson as the tab-label fix in the mechanic app (shorten/reflow
      instead of shrinking font past readable). */
-  .yard-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .yard-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-3); }
   .yard-buttons button {
-    padding: 9px 4px; border: 1px solid var(--border); border-radius: 8px;
+    padding: var(--space-2) var(--space-1); border: 1px solid var(--border); border-radius: 8px;
     background: var(--surface2); color: var(--text); font-size: 13px; font-weight: 600;
     cursor: pointer;
   }
   .yard-buttons button.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .yard-mismatch-note { font-size: 12px; color: var(--red); margin-top: 6px; }
-  .yard-note-form { margin-top: 10px; }
+  .yard-mismatch-note { font-size: 12px; color: var(--red); margin-top: var(--space-2); }
+  .yard-note-form { margin-top: var(--space-3); }
   .yard-note-form textarea { min-height: 50px; }
 </style>
 </head>
