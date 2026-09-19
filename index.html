@@ -286,6 +286,18 @@
      on it), so it wants a deliberately larger breather than any card
      rhythm value would give it. */
   .not-telegram { text-align: center; padding: 60px var(--space-5); color: var(--muted); }
+  /* UI/UX pass 6, 2026-09-19, direct feedback ("it loads, and then
+     flickers as if loading again, every single time"): every tab
+     switch re-fetches and fully replaces the list's innerHTML, and
+     every card/column in that replacement always carried the cardIn
+     entrance animation -- correct for the very first paint, but it
+     was replaying on every single refresh too, landing a beat after
+     the screen's own screenIn fade (which starts immediately on tap,
+     before the fetch returns) -- two separate animations read as one
+     load finishing and a second one starting. Applied to any card
+     rendered on a repeat visit instead of the true first one (see
+     renderRepairs/renderYard's own firstLoad tracking). */
+  .no-anim { animation: none !important; }
   /* UI/UX pass 5, 2026-09-19, direct feedback ("cek pool especially so
      [ugly/lacking]" -- see the full design conversation this
      implements): replaces the per-truck card with a 2x2 button grid
@@ -531,13 +543,14 @@ async function loadRepairs() {
 }
 
 function renderRepairs(repairs) {
+  const firstLoad = !repairsLoaded;
   repairsLoaded = true;
   const all = repairs || [];
-  renderOpenRepairs(all.filter((r) => r.status === "open"));
-  renderSignoffRepairs(all.filter((r) => r.status === "pending_signoff"));
+  renderOpenRepairs(all.filter((r) => r.status === "open"), firstLoad);
+  renderSignoffRepairs(all.filter((r) => r.status === "pending_signoff"), firstLoad);
 }
 
-function renderOpenRepairs(repairs) {
+function renderOpenRepairs(repairs, firstLoad) {
   const el = document.getElementById("list-repairs");
   const openIds = new Set(
     [...el.querySelectorAll("details.repair-card[open]")].map((d) => d.dataset.id),
@@ -557,7 +570,7 @@ function renderOpenRepairs(repairs) {
     .map((r) => {
       const issues = r.repair_record_issues || [];
       return `
-      <details class="repair-card" data-id="${r.id}" ${openIds.has(r.id) ? "open" : ""}>
+      <details class="repair-card${firstLoad ? "" : " no-anim"}" data-id="${r.id}" ${openIds.has(r.id) ? "open" : ""}>
         <summary class="repair-summary">
           <div class="repair-summary-row">
             <span class="truck-id">Truk ${r.truck_id}</span>
@@ -717,7 +730,7 @@ function renderOpenRepairs(repairs) {
 // split (Diperbaiki vs Sign-off), so a dispatcher scanning for what
 // needs a decision doesn't have to open every Tinjau Servis card to
 // find the ones actually awaiting sign-off.
-function renderSignoffRepairs(repairs) {
+function renderSignoffRepairs(repairs, firstLoad) {
   const el = document.getElementById("list-signoff");
   if (!repairs || repairs.length === 0) {
     el.className = "empty";
@@ -729,7 +742,7 @@ function renderSignoffRepairs(repairs) {
     .map((r) => {
       const issues = r.repair_record_issues || [];
       return `
-      <div class="card" data-id="${r.id}">
+      <div class="card${firstLoad ? "" : " no-anim"}" data-id="${r.id}">
         <div class="card-title">
           <span class="truck-id">Truk ${r.truck_id}</span>
           <span class="status-chip status-chip-pending_signoff">${STATUS_LABELS.pending_signoff}</span>
@@ -797,6 +810,7 @@ const BOARD_BUCKETS = [
 
 function renderYard(checkins) {
   const el = document.getElementById("list-yard");
+  const firstLoad = !yardLoaded;
   yardLoaded = true;
   if (!checkins || checkins.length === 0) {
     el.className = "empty";
@@ -835,7 +849,7 @@ function renderYard(checkins) {
       ${BOARD_BUCKETS.map((b) => {
         const trucks = placed.filter((c) => c.bucket === b.key);
         return `
-          <div class="board-col" data-bucket="${b.key}">
+          <div class="board-col${firstLoad ? "" : " no-anim"}" data-bucket="${b.key}">
             <div class="board-col-head">
               <span class="board-col-name">${b.name}</span>
               <span class="board-col-count">${trucks.length}</span>
