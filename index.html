@@ -354,22 +354,38 @@
     0% { background: var(--accent-dim); border-color: var(--accent); transform: scale(1.12); }
     100% { transform: scale(1); }
   }
-  /* Pool-only loaded/kosong sub-badge, 2026-09-19 -- a chip everywhere
-     else is a plain text pill, but a Pool chip additionally carries
-     its own small tappable circle (M/K/?) so the dispatcher can flag
-     cargo status without leaving the board -- the picker (bucket
-     reassignment) stays a separate tap on the rest of the chip. */
-  .chip.pool-chip { display: inline-flex; align-items: center; gap: 5px; padding-right: 4px; }
-  .chip-loaded {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 18px; height: 18px; border-radius: 50%; padding: 0; line-height: 1;
-    font-family: var(--sans); font-size: 10px; font-weight: 700;
-    border: 1px solid var(--border); background: var(--surface); color: var(--dim);
-    cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.15s ease;
+  /* Loaded/kosong sub-control, redesigned 2026-09-19 per direct
+     feedback on the first version (a single circle cycling M -> K):
+     "not fully intuitively explanatory ... clicking it is always
+     switching M to K [never back]". Replaced with two always-visible,
+     independently tappable letters -- a real 2-way segmented pill, the
+     same pattern the top-level tab bar already uses -- so there's no
+     cycling logic to get out of sync with what's on screen: tapping M
+     always means "mark loaded," tapping K always means "mark empty,"
+     whichever one is already true stays visually pressed. Shown on
+     Pool AND Sedang Diperbaiki chips -- "even diperbaiki can have M
+     vs K too, could be being fixed while loaded" (a bucket a truck can
+     sensibly sit in with cargo still aboard; matches set_loaded's own
+     server-side LOADED_ELIGIBLE_BUCKETS). */
+  .chip.loaded-chip { display: inline-flex; align-items: center; gap: 4px; padding-right: 3px; }
+  .chip-loaded-group {
+    display: inline-flex; border-radius: 999px; overflow: hidden;
+    border: 1px solid var(--border);
   }
-  .chip-loaded:active { transform: scale(0.88); }
-  .chip-loaded-muat { background: var(--green); border-color: var(--green); color: #fff; }
-  .chip-loaded-kosong { background: var(--surface2); border-color: var(--border); color: var(--muted); }
+  .chip-loaded-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px; line-height: 1;
+    font-family: var(--sans); font-size: 9.5px; font-weight: 700;
+    border: none; background: var(--surface); color: var(--dim);
+    cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.1s ease, color 0.1s ease;
+  }
+  .chip-loaded-btn + .chip-loaded-btn { border-left: 1px solid var(--border); }
+  /* Muat = green (cargo aboard, ready to roll) and Kosong = a plain
+     filled neutral (needs a pickup) -- distinct hues, not just a tint
+     of the same color, so the two active states read apart from each
+     other at a glance, not just apart from "unset." */
+  .chip-loaded-btn.chip-loaded-muat.active { background: var(--green); color: #fff; }
+  .chip-loaded-btn.chip-loaded-kosong.active { background: var(--muted); color: #fff; }
   .empty-col-hint { font-size: 11.5px; color: var(--dim); padding: 2px 0; }
   /* Reassign popover -- dark, to read as a transient overlay distinct
      from the page's own light surfaces. Positioned under the tapped
@@ -824,24 +840,26 @@ const BOARD_BUCKETS = [
   { key: "lainnya", name: "Lainnya" },
 ];
 
-// UI/UX: Pool-only loaded/kosong indicator, 2026-09-19, direct
-// instruction: dispatcher wants to see at a glance which Pool trucks
-// already have a load on board versus which are empty. Only the Pool
-// chip gets the extra tappable sub-badge -- every other bucket's chip
-// stays exactly the plain truck-id pill it always was, since loaded/
-// kosong has no meaning once a truck's left Pool.
+// Loaded/kosong indicator, redesigned 2026-09-19 -- see the CSS
+// comment above .chip-loaded-group for the full reasoning. Shown on
+// Pool and Sedang Diperbaiki chips only; every other bucket's chip
+// stays exactly the plain truck-id pill it always was.
+const LOADED_ELIGIBLE_BUCKETS = ["pool", "under_repair"];
+
 function renderChip(c, bucketKey) {
   const pendingClass = c.already_confirmed && !c.matched ? " pending-review" : "";
-  if (bucketKey !== "pool") {
+  if (!LOADED_ELIGIBLE_BUCKETS.includes(bucketKey)) {
     return `<span class="chip${pendingClass}" data-truck="${c.truck_id}">${c.truck_id}</span>`;
   }
-  const loadedState = c.loaded === true ? "muat" : c.loaded === false ? "kosong" : "unknown";
-  const loadedLabel = c.loaded === true ? "M" : c.loaded === false ? "K" : "?";
-  const loadedAttr = c.loaded === true ? "true" : c.loaded === false ? "false" : "null";
+  const muatActive = c.loaded === true ? " active" : "";
+  const kosongActive = c.loaded === false ? " active" : "";
   return `
-    <span class="chip pool-chip${pendingClass}" data-truck="${c.truck_id}">
+    <span class="chip loaded-chip${pendingClass}" data-truck="${c.truck_id}">
       <span class="chip-truck">${c.truck_id}</span>
-      <button type="button" class="chip-loaded chip-loaded-${loadedState}" data-truck="${c.truck_id}" data-loaded="${loadedAttr}">${loadedLabel}</button>
+      <span class="chip-loaded-group" data-truck="${c.truck_id}">
+        <button type="button" class="chip-loaded-btn chip-loaded-muat${muatActive}" data-target="true">M</button>
+        <button type="button" class="chip-loaded-btn chip-loaded-kosong${kosongActive}" data-target="false">K</button>
+      </span>
     </span>
   `;
 }
@@ -917,28 +935,44 @@ function renderYard(checkins) {
   // reassign-picker listener above -- tapping M/K/? cycles the loaded
   // state directly, tapping the rest of the chip still opens the
   // picker as before.
-  el.querySelectorAll(".chip-loaded").forEach((btn) => {
+  el.querySelectorAll(".chip-loaded-btn").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      toggleLoaded(btn);
+      handleLoadedClick(btn);
     });
   });
 }
 
-// null -> muat first tap (an unset truck is more often about to be
-// dispatched loaded than confirmed empty), then plain toggle after
-// that -- never cycles back to unknown once observed once.
-async function toggleLoaded(btn) {
-  const truckId = btn.dataset.truck;
-  const current = btn.dataset.loaded === "true" ? true : btn.dataset.loaded === "false" ? false : null;
-  const next = current === null ? true : !current;
-  btn.disabled = true;
+// Marks whichever of the M/K pair matches loadedValue as .active and
+// clears the other -- the single source of truth for how this control
+// looks, used both for the optimistic flip below and to revert it.
+function setLoadedGroupState(group, loadedValue) {
+  group.querySelectorAll(".chip-loaded-btn").forEach((b) => {
+    const isTarget = b.dataset.target === "true";
+    b.classList.toggle("active", loadedValue === isTarget);
+  });
+}
+
+// Optimistic: flips the pressed state immediately (no wait on the
+// network or a full board reload) -- direct feedback, 2026-09-19,
+// "the switching between M and K is quite laggy." Only reverts if the
+// call actually fails (e.g. the truck's moved off Pool/Diperbaiki
+// since the page loaded); no reload on success since nothing else on
+// the board changes from this action.
+async function handleLoadedClick(btn) {
+  const group = btn.closest(".chip-loaded-group");
+  const truckId = group.dataset.truck;
+  const target = btn.dataset.target === "true";
+  const alreadyActive = btn.classList.contains("active");
+  if (alreadyActive) return;
+  const prevActiveBtn = group.querySelector(".chip-loaded-btn.active");
+  const prevValue = prevActiveBtn ? prevActiveBtn.dataset.target === "true" : null;
+  setLoadedGroupState(group, target);
   try {
-    await call("set_pool_loaded", { truck_id: truckId, loaded: next });
-    loadYard();
+    await call("set_loaded", { truck_id: truckId, loaded: target });
   } catch (e) {
+    setLoadedGroupState(group, prevValue);
     toast("Gagal: " + e.message);
-    btn.disabled = false;
   }
 }
 
