@@ -847,7 +847,7 @@ const BOARD_BUCKETS = [
 const LOADED_ELIGIBLE_BUCKETS = ["pool", "under_repair"];
 
 function renderChip(c, bucketKey) {
-  const pendingClass = c.already_confirmed && !c.matched ? " pending-review" : "";
+  const pendingClass = c.pending_review ? " pending-review" : "";
   if (!LOADED_ELIGIBLE_BUCKETS.includes(bucketKey)) {
     return `<span class="chip${pendingClass}" data-truck="${c.truck_id}">${c.truck_id}</span>`;
   }
