@@ -317,6 +317,33 @@
     letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted);
   }
   .board-title .board-count { font-family: var(--mono); font-weight: 600; text-transform: none; letter-spacing: 0; }
+  /* Legend, 2026-09-19, direct feedback ("how would farman even know
+     what amber means ... apple always make things so intuitive"):
+     always-visible, one line, no tap required -- the meaning sits
+     right where the thing it explains is, same idea as a caption
+     under an iOS section header. Deliberately not a hidden info
+     button or a first-run tooltip: those depend on someone finding
+     and remembering them, and Farman scans this board daily without
+     necessarily re-reading anything he's seen before. Colors/letters
+     here reuse the exact tokens the real chips use (var(--green),
+     the pending-review amber, chip-loaded-btn's own size) so the key
+     and the thing it's keying are visually the same object, not a
+     separate color chosen to merely resemble it. */
+  .board-legend {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4);
+    margin-bottom: var(--space-3); font-size: 11px; color: var(--muted);
+  }
+  .board-legend .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .legend-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #FCEFD8; border: 1px solid #C98A2E;
+  }
+  .legend-letter {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%; font-size: 9px; font-weight: 700; color: #fff;
+  }
+  .legend-letter.muat { background: var(--green); }
+  .legend-letter.kosong { background: var(--muted); }
   .unconfirmed-section { margin-bottom: var(--space-4); }
   .unconfirmed-label { font-size: 12px; color: var(--muted); margin-bottom: var(--space-2); }
   .board { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
@@ -921,8 +948,22 @@ function renderYard(checkins) {
     </div>
   `;
 
+  // Only mentions amber when a truck on today's board is actually
+  // showing it -- no point explaining a color nobody currently sees.
+  // The M/K item always shows, since Pool/Diperbaiki chips always
+  // carry that control regardless of whether anything's disputed.
+  const anyPendingReview = checkins.some((c) => c.pending_review);
+  const legendHtml = `
+    <div class="board-legend">
+      ${anyPendingReview ? '<span class="legend-item"><span class="legend-dot"></span>Menunggu tinjauan Alexander</span>' : ""}
+      <span class="legend-item"><span class="legend-letter muat">M</span>Muat</span>
+      <span class="legend-item"><span class="legend-letter kosong">K</span>Kosong</span>
+    </div>
+  `;
+
   el.innerHTML = `
     <div class="board-title"><span>Truk hari ini</span><span class="board-count">${checkins.length}</span></div>
+    ${legendHtml}
     ${unconfirmedHtml}
     ${boardHtml}
   `;
