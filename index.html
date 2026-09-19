@@ -81,8 +81,8 @@
   @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes cardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) {
-    .screen.active, .repair-card, .card, .yard-card { animation: none !important; }
-    .tab-indicator, .tab, button, .toast { transition: none !important; }
+    .screen.active, .repair-card, .card, .board-col, .chip.flash { animation: none !important; }
+    .tab-indicator, .tab, button, .toast, .chip { transition: none !important; }
     .skeleton-line::after { animation: none !important; }
   }
   label { display: block; font-size: 13px; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
@@ -286,29 +286,90 @@
      on it), so it wants a deliberately larger breather than any card
      rhythm value would give it. */
   .not-telegram { text-align: center; padding: 60px var(--space-5); color: var(--muted); }
-  .yard-card {
+  /* UI/UX pass 5, 2026-09-19, direct feedback ("cek pool especially so
+     [ugly/lacking]" -- see the full design conversation this
+     implements): replaces the per-truck card with a 2x2 button grid
+     with a board -- one column per real bucket, each truck a small
+     tappable chip. Tapping a chip opens a picker to reassign it, and
+     that tap IS the confirm_checkin call -- the same reconciliation
+     pipeline a driver's own report already goes through (see
+     dispatcher-api's confirm_checkin and driver-report-reconciliation's
+     "Dispatcher confirmation checklist"). A mismatch with GPS is no
+     longer something this screen asks the dispatcher to resolve, so
+     there's nothing left to warn about beyond a quiet marker on the
+     chip itself -- Alexander reconciles it on his own hourly pass.
+  */
+  .board-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--space-2); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted);
+  }
+  .board-title .board-count { font-family: var(--mono); font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .unconfirmed-section { margin-bottom: var(--space-4); }
+  .unconfirmed-label { font-size: 12px; color: var(--muted); margin-bottom: var(--space-2); }
+  .board { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .board-col {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: var(--space-4); margin-bottom: var(--space-3);
-    box-shadow: 0 1px 2px rgba(43, 36, 32, 0.04), 0 2px 10px rgba(43, 36, 32, 0.05);
-    animation: cardIn 0.25s ease both;
+    padding: var(--space-3); animation: cardIn 0.25s ease both;
   }
-  .yard-card-title { display: flex; align-items: center; justify-content: space-between; }
-  .yard-card-title .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
-  .yard-card-system { font-size: 13px; color: var(--muted); }
-  /* 2x2 grid, not a 4-wide flex row -- 4 buttons across one row on a
-     phone screen made "Under repair"/"At Indahkiat" wrap and cramp, same
-     lesson as the tab-label fix in the mechanic app (shorten/reflow
-     instead of shrinking font past readable). */
-  .yard-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-3); }
-  .yard-buttons button {
-    padding: var(--space-2) var(--space-1); border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface2); color: var(--text); font-size: 13px; font-weight: 600;
-    cursor: pointer;
+  .board-col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--surface2);
   }
-  .yard-buttons button.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .yard-mismatch-note { font-size: 12px; color: var(--red); margin-top: var(--space-2); }
-  .yard-note-form { margin-top: var(--space-3); }
-  .yard-note-form textarea { min-height: 50px; }
+  .board-col-name { font-size: 12px; font-weight: 700; }
+  .board-col[data-bucket="pool"] .board-col-name { color: var(--text); }
+  .board-col[data-bucket="under_repair"] .board-col-name { color: #9A5B0A; }
+  .board-col[data-bucket="at_indahkiat"] .board-col-name { color: var(--accent); }
+  .board-col[data-bucket="lainnya"] .board-col-name { color: var(--muted); }
+  .board-col-count {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: var(--surface2); border-radius: 999px; padding: 1px var(--space-2);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--space-1); min-height: 28px; }
+  .chip {
+    font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--text);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 999px;
+    padding: var(--space-1) var(--space-2); cursor: pointer; transition: transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chip:active { transform: scale(0.94); }
+  /* Confirmed today but not what GPS currently shows -- quietly
+     flagged, not alarmed, since resolving it is Alexander's job now,
+     not the dispatcher's (see block comment above). */
+  .chip.pending-review { border-color: #C98A2E; background: #FCEFD8; color: #7A4A0A; }
+  .chip.flash { animation: chipFlash 0.7s ease; }
+  @keyframes chipFlash {
+    0% { background: var(--accent-dim); border-color: var(--accent); transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+  .empty-col-hint { font-size: 11.5px; color: var(--dim); padding: 2px 0; }
+  /* Reassign popover -- dark, to read as a transient overlay distinct
+     from the page's own light surfaces. Positioned under the tapped
+     chip from JS (see positionYardPicker). */
+  .picker {
+    position: fixed; z-index: 20; background: var(--text); color: var(--bg);
+    border-radius: 12px; padding: var(--space-1); box-shadow: 0 10px 30px rgba(43, 36, 32, 0.3);
+    display: none; flex-direction: column; gap: 2px; min-width: 172px;
+  }
+  .picker.show { display: flex; }
+  .picker button {
+    background: none; border: none; color: inherit; text-align: left; font-size: 13px;
+    padding: var(--space-2); border-radius: 8px; cursor: pointer; font-family: var(--sans); font-weight: 500;
+  }
+  .picker button:active { background: rgba(255, 255, 255, 0.12); }
+  .picker-label {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim);
+    padding: var(--space-2) var(--space-2) 2px;
+  }
+  .picker-note { padding: var(--space-2); }
+  .picker-note textarea {
+    min-height: 60px; margin-bottom: var(--space-2); background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2); color: var(--bg); font-size: 13px;
+  }
+  .picker-note textarea::placeholder { color: var(--dim); }
+  .picker-note-actions { display: flex; gap: var(--space-2); }
+  .picker-note-actions button { flex: 1; text-align: center; background: rgba(255, 255, 255, 0.1); }
+  .picker-note-actions button.primary-action { background: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -325,7 +386,7 @@
     <div class="tab-indicator" id="tabIndicator"></div>
     <div class="tab active" data-screen="repairs" data-index="0">Tinjau Servis</div>
     <div class="tab" data-screen="signoff" data-index="1">Sign-off</div>
-    <div class="tab" data-screen="yard" data-index="2">Cek Pool</div>
+    <div class="tab" data-screen="yard" data-index="2">Cek Armada</div>
   </div>
 
   <div class="screen active" id="screen-repairs">
@@ -351,6 +412,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="picker" id="picker"></div>
 
 <script>
 // Overridable via ?api=<url> (e.g. pointing at a local/staging
@@ -726,6 +788,13 @@ async function loadYard() {
   renderYard(checkins);
 }
 
+const BOARD_BUCKETS = [
+  { key: "pool", name: "Pool" },
+  { key: "under_repair", name: "Sedang Diperbaiki" },
+  { key: "at_indahkiat", name: "Di Indahkiat" },
+  { key: "lainnya", name: "Lainnya" },
+];
+
 function renderYard(checkins) {
   const el = document.getElementById("list-yard");
   yardLoaded = true;
@@ -735,71 +804,138 @@ function renderYard(checkins) {
     return;
   }
   el.className = "";
-  el.innerHTML = checkins
-    .map((c) => {
-      const current = c.dispatcher_state || c.system_state;
-      const mismatchNote = c.already_confirmed && !c.matched
-        ? `<div class="yard-mismatch-note">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state}${c.note ? " -- " + c.note : " -- berbeda dari konfirmasi"}</div>`
-        : "";
-      return `
-      <div class="yard-card" data-truck="${c.truck_id}">
-        <div class="yard-card-title">
-          <span class="truck-id">Truk ${c.truck_id}</span>
-          <span class="yard-card-system">Sistem: ${BUCKET_LABELS[c.system_state] || c.system_state}</span>
+
+  // Column placement mirrors the old per-card logic (dispatcher's own
+  // confirmation, else the system's best guess) -- a truck the system
+  // can't place at all (system_state "unknown": mid-route, ferry,
+  // off-Indahkiat loading) has no real bucket yet and sits in its own
+  // row above the board instead of being forced into "Lainnya," which
+  // implies a dispatcher already made that call.
+  const placed = [];
+  const unplaced = [];
+  checkins.forEach((c) => {
+    const bucket = c.dispatcher_state || (c.system_state !== "unknown" ? c.system_state : null);
+    if (bucket) placed.push({ ...c, bucket });
+    else unplaced.push(c);
+  });
+
+  const unconfirmedHtml = unplaced.length
+    ? `
+      <div class="unconfirmed-section">
+        <div class="unconfirmed-label">${unplaced.length} truk belum diketahui lokasinya</div>
+        <div class="chips">
+          ${unplaced.map((c) => `<span class="chip" data-truck="${c.truck_id}">${c.truck_id}</span>`).join("")}
         </div>
-        <div class="yard-buttons">
-          ${["pool", "under_repair", "at_indahkiat", "lainnya"]
-            .map((b) => `<button data-bucket="${b}" class="${current === b ? "selected" : ""}">${BUCKET_LABELS[b]}</button>`)
-            .join("")}
-        </div>
-        <div class="yard-note-form" style="display:none">
-          <label>Catatan (wajib untuk Lainnya)</label>
-          <textarea class="yard-note-input" placeholder="Jelaskan kondisi truk ini..."></textarea>
-          <button class="primary btn-yard-note-submit">Konfirmasi</button>
-        </div>
-        ${mismatchNote}
       </div>
-    `;
-    })
-    .join("");
+    `
+    : "";
 
-  el.querySelectorAll(".yard-card").forEach((card) => {
-    const noteForm = card.querySelector(".yard-note-form");
+  const boardHtml = `
+    <div class="board">
+      ${BOARD_BUCKETS.map((b) => {
+        const trucks = placed.filter((c) => c.bucket === b.key);
+        return `
+          <div class="board-col" data-bucket="${b.key}">
+            <div class="board-col-head">
+              <span class="board-col-name">${b.name}</span>
+              <span class="board-col-count">${trucks.length}</span>
+            </div>
+            <div class="chips">
+              ${trucks.length
+                ? trucks.map((c) => `<span class="chip${c.already_confirmed && !c.matched ? " pending-review" : ""}" data-truck="${c.truck_id}">${c.truck_id}</span>`).join("")
+                : '<span class="empty-col-hint">Tidak ada</span>'}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
 
-    const submit = async (bucket, note) => {
-      card.querySelectorAll(".yard-buttons button, .btn-yard-note-submit").forEach((b) => (b.disabled = true));
-      try {
-        await call("confirm_checkin", { truck_id: card.dataset.truck, dispatcher_state: bucket, note });
-        toast("Dikonfirmasi.");
-        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-        loadYard();
-      } catch (e) {
-        toast("Gagal: " + e.message);
-        card.querySelectorAll(".yard-buttons button, .btn-yard-note-submit").forEach((b) => (b.disabled = false));
-      }
-    };
+  el.innerHTML = `
+    <div class="board-title"><span>Truk hari ini</span><span class="board-count">${checkins.length}</span></div>
+    ${unconfirmedHtml}
+    ${boardHtml}
+  `;
 
-    card.querySelectorAll(".yard-buttons button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        if (btn.dataset.bucket === "lainnya") {
-          noteForm.style.display = "block";
-          card.querySelector(".yard-note-input").focus();
-          return;
-        }
-        noteForm.style.display = "none";
-        submit(btn.dataset.bucket, null);
-      });
-    });
+  el.querySelectorAll(".chip").forEach((chip) => {
+    chip.addEventListener("click", (ev) => openYardPicker(ev.currentTarget));
+  });
+}
 
-    card.querySelector(".btn-yard-note-submit").addEventListener("click", () => {
-      const note = card.querySelector(".yard-note-input").value.trim();
-      if (!note) {
-        toast("Catatan wajib diisi untuk Lainnya.");
+const yardPickerEl = document.getElementById("picker");
+
+function closeYardPicker() {
+  yardPickerEl.classList.remove("show");
+  yardPickerEl.innerHTML = "";
+  document.removeEventListener("click", onYardPickerOutsideClick);
+}
+
+function onYardPickerOutsideClick(ev) {
+  if (!yardPickerEl.contains(ev.target)) closeYardPicker();
+}
+
+function positionYardPicker(anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  yardPickerEl.style.top = (rect.bottom + 6) + "px";
+  yardPickerEl.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 196)) + "px";
+}
+
+async function submitYardConfirm(truckId, bucket, note) {
+  closeYardPicker();
+  try {
+    await call("confirm_checkin", { truck_id: truckId, dispatcher_state: bucket, note: note || null });
+    toast(`Truk ${truckId} dikonfirmasi: ${BUCKET_LABELS[bucket]}.`);
+    if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+    loadYard();
+  } catch (e) {
+    toast("Gagal: " + e.message);
+  }
+}
+
+// Reassign popover replaces the old per-card 2x2 button grid -- one
+// tap opens it, one more tap (or, for Lainnya, a short inline note
+// step) sends confirm_checkin. "Lainnya" still requires a note
+// server-side, same as before, just asked here instead of on a form
+// that sat on every card whether or not it was ever used.
+function openYardPicker(chip) {
+  const truckId = chip.dataset.truck;
+  yardPickerEl.innerHTML = `<div class="picker-label">Truk ${truckId}</div>` +
+    BOARD_BUCKETS.map((b) => `<button type="button" data-bucket="${b.key}">${b.name}</button>`).join("");
+
+  yardPickerEl.querySelectorAll("button[data-bucket]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const bucket = btn.dataset.bucket;
+      if (bucket === "lainnya") {
+        yardPickerEl.innerHTML = `
+          <div class="picker-label">Truk ${truckId} -- Lainnya</div>
+          <div class="picker-note">
+            <textarea placeholder="Jelaskan kondisi truk ini..."></textarea>
+            <div class="picker-note-actions">
+              <button type="button" class="picker-cancel">Batal</button>
+              <button type="button" class="primary-action picker-confirm">Konfirmasi</button>
+            </div>
+          </div>
+        `;
+        const textarea = yardPickerEl.querySelector("textarea");
+        textarea.focus();
+        yardPickerEl.querySelector(".picker-cancel").addEventListener("click", closeYardPicker);
+        yardPickerEl.querySelector(".picker-confirm").addEventListener("click", () => {
+          const note = textarea.value.trim();
+          if (!note) {
+            toast("Catatan wajib diisi untuk Lainnya.");
+            return;
+          }
+          submitYardConfirm(truckId, "lainnya", note);
+        });
         return;
       }
-      submit("lainnya", note);
+      submitYardConfirm(truckId, bucket, null);
     });
   });
+
+  positionYardPicker(chip);
+  yardPickerEl.classList.add("show");
+  setTimeout(() => document.addEventListener("click", onYardPickerOutsideClick), 0);
 }
 
 // Moves the sliding pill behind the tapped tab -- a real element's
