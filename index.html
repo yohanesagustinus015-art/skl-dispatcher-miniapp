@@ -1134,9 +1134,22 @@ function onYardPickerOutsideClick(ev) {
   if (!yardPickerEl.contains(ev.target)) closeYardPicker();
 }
 
+// Called both when the picker first opens (short 4-bucket list) and
+// again after switching to the taller Lainnya note form -- direct
+// feedback, 2026-09-20: "cannot move t65 and t93 to lainnya." Root
+// cause wasn't truck-specific at all: top was never clamped to the
+// viewport (only left was), and this only ran once at open time, so a
+// chip anywhere in the lower half of the screen opened a picker that
+// fit at 4 buttons tall but ran off the bottom of the fixed-position
+// viewport the moment Lainnya's textarea+buttons form (2-3x taller)
+// swapped in -- nothing below that point could be reached, Konfirmasi
+// included. classList.add("show") has to happen here, before reading
+// offsetHeight, since the element reports 0 height while display:none.
 function positionYardPicker(anchorEl) {
   const rect = anchorEl.getBoundingClientRect();
-  yardPickerEl.style.top = (rect.bottom + 6) + "px";
+  yardPickerEl.classList.add("show");
+  const top = Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - yardPickerEl.offsetHeight - 8));
+  yardPickerEl.style.top = top + "px";
   yardPickerEl.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 196)) + "px";
 }
 
@@ -1176,6 +1189,7 @@ function openYardPicker(chip) {
             </div>
           </div>
         `;
+        positionYardPicker(chip);
         const textarea = yardPickerEl.querySelector("textarea");
         textarea.focus();
         yardPickerEl.querySelector(".picker-cancel").addEventListener("click", closeYardPicker);
@@ -1194,7 +1208,6 @@ function openYardPicker(chip) {
   });
 
   positionYardPicker(chip);
-  yardPickerEl.classList.add("show");
   setTimeout(() => document.addEventListener("click", onYardPickerOutsideClick), 0);
 }
 
