@@ -81,8 +81,8 @@
   @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes cardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) {
-    .screen.active, .repair-card, .card, .board-col, .chip.flash { animation: none !important; }
-    .tab-indicator, .tab, button, .toast, .chip { transition: none !important; }
+    .screen.active, .card, .board-col, .chip.flash { animation: none !important; }
+    .tab-indicator, .tab, button, .toast, .chip, .detail-sheet-overlay, .detail-sheet { transition: none !important; }
     .skeleton-line::after { animation: none !important; }
   }
   label { display: block; font-size: 13px; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
@@ -121,36 +121,46 @@
      above, alongside screenIn) plays once per freshly-rendered card
      since innerHTML replacement always creates new DOM nodes -- no
      extra JS needed to trigger it per render. */
-  .repair-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    margin-bottom: var(--space-3); overflow: hidden;
-    box-shadow: 0 1px 2px rgba(43, 36, 32, 0.04), 0 2px 10px rgba(43, 36, 32, 0.05);
-    animation: cardIn 0.25s ease both;
+  /* Master-detail redesign, 2026-09-20, direct instruction: the list
+     shows a clean summary card (same box as Sign-off's own cards, not
+     an expandable accordion), tap opens a full-screen detail sheet for
+     the per-issue editing that used to live inline -- the exact same
+     "formatted messy" fix Cek Armada got, applied here since Tinjau
+     Servis had the same expand-in-place problem. Sorted by longest
+     downtime first (direct instruction), so the truck that's been
+     sitting broken longest is always what a dispatcher sees first,
+     regardless of status -- see renderOpenRepairs' own sort comment. */
+  .repair-summary-card { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.1s ease; }
+  .repair-summary-card:active { transform: scale(0.98); }
+  .repair-blocked-note {
+    margin-top: var(--space-2); font-size: 12.5px; color: #9A5B0A;
+    background: #FCEFD8; border-radius: 8px; padding: var(--space-1) var(--space-2); display: inline-block;
   }
-  /* display:flex directly on <summary> is unreliable in Safari (same
-     real bug found and fixed in mekanik-miniapp, 2026-09-03 -- Android/
-     Chromium is the only engine that reliably flexes a <summary> itself).
-     Flex layout lives on .repair-summary-row, an ordinary <div> nested
-     inside the summary, instead. */
-  .repair-summary {
-    display: block; padding: var(--space-4); cursor: pointer; list-style: none;
-    -webkit-tap-highlight-color: transparent; transition: background 0.15s ease;
+  /* Bottom sheet, same iOS-style slide-up as the reassign picker's own
+     dark popover but full-width/tall -- this one holds a whole
+     repair's editable detail, not a handful of buttons, so it needs
+     real room rather than a small anchored popover. */
+  .detail-sheet-overlay {
+    position: fixed; inset: 0; background: rgba(43, 36, 32, 0.4); z-index: 30;
+    display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
   }
-  .repair-summary:active { background: var(--surface2); }
-  .repair-summary::-webkit-details-marker { display: none; }
-  .repair-summary-row {
+  .detail-sheet-overlay.show { opacity: 1; pointer-events: auto; }
+  .detail-sheet {
+    background: var(--bg); width: 100%; max-height: 88vh; border-radius: 20px 20px 0 0;
+    display: flex; flex-direction: column; overflow: hidden;
+    transform: translateY(100%); transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .detail-sheet-overlay.show .detail-sheet { transform: translateY(0); }
+  .detail-sheet-header {
     display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+    padding: var(--space-4); border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0;
   }
-  .repair-summary-row::after {
-    content: "\25B8"; color: var(--muted); font-size: 12px; flex-shrink: 0;
-    transition: transform 0.15s;
+  .detail-sheet-close {
+    width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--surface2);
+    color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  .repair-card[open] .repair-summary-row::after { transform: rotate(90deg); }
-  .repair-summary .truck-id { font-family: var(--mono); color: var(--accent); font-weight: 600; }
-  .repair-summary-meta {
-    font-size: 13px; color: var(--muted); text-align: right; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap;
-  }
+  .detail-sheet-body { padding: var(--space-4); overflow-y: auto; }
   /* Direct feedback, 2026-09-02: "make it apparent which ones are
      complete (mechanic closed, awaiting sign-off only) and which are
      ongoing" -- status used to only show as plain text buried inside
@@ -167,11 +177,10 @@
   .status-chip-open { background: var(--surface2); color: var(--muted); }
   .status-chip-pending_signoff { background: #FCEFD8; color: #9A5B0A; }
   .status-chip-signed_off { background: #E1F0E6; color: var(--green); }
-  .repair-body { padding: 0 var(--space-4) var(--space-4); }
-  /* Plain (non-collapsible) card -- new for the dedicated Sign-off tab
-     (2026-09-03: 'dispatcher should have the same Sign-off tab as
-     mechanic'), same box as .repair-card but without the <details>
-     collapse since a sign-off card has nothing worth hiding. */
+  /* Shared box for both plain lists -- Sign-off (2026-09-03: 'dispatcher
+     should have the same Sign-off tab as mechanic') and, since
+     2026-09-20, Tinjau Servis's own summary cards (see the
+     master-detail redesign comment above .repair-summary-card). */
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     padding: var(--space-4); margin-bottom: var(--space-3);
@@ -484,6 +493,9 @@
 
 <div class="toast" id="toast"></div>
 <div class="picker" id="picker"></div>
+<div class="detail-sheet-overlay" id="detailSheetOverlay">
+  <div class="detail-sheet" id="detailSheet"></div>
+</div>
 
 <script>
 // Overridable via ?api=<url> (e.g. pointing at a local/staging
@@ -609,14 +621,33 @@ function renderRepairs(repairs) {
   renderSignoffRepairs(all.filter((r) => r.status === "pending_signoff"), firstLoad);
 }
 
+// Elapsed time since downtime_start, for the summary card's own
+// "Turun X hari Y jam" line -- this is also the exact value the new
+// longest-downtime-first sort below is ordering by, so showing it
+// makes the ordering self-explanatory instead of a mystery.
+function formatDuration(startIso) {
+  if (!startIso) return "-";
+  const ms = Math.max(Date.now() - new Date(startIso).getTime(), 0);
+  const totalHours = Math.floor(ms / 3600000);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return days > 0 ? `${days} hari ${hours} jam` : `${hours} jam`;
+}
+
+// Cache of the currently-rendered open repairs, so openRepairDetail
+// can look one up by id without a second fetch, and a post-action
+// refresh (see renderOpenRepairs' own openDetailId handling) can
+// re-render the open sheet from fresh data without closing it.
+let currentOpenRepairs = [];
+let openDetailId = null;
+
 function renderOpenRepairs(repairs, firstLoad) {
   const el = document.getElementById("list-repairs");
-  const openIds = new Set(
-    [...el.querySelectorAll("details.repair-card[open]")].map((d) => d.dataset.id),
-  );
   if (!repairs || repairs.length === 0) {
+    currentOpenRepairs = [];
     el.className = "empty";
     el.innerHTML = EMPTY_ICON + "Tidak ada servis yang perlu dilengkapi.";
+    if (openDetailId) closeDetailSheet();
     return;
   }
   // Real bug this pattern can hit if skipped (found in mekanik-miniapp,
@@ -625,93 +656,165 @@ function renderOpenRepairs(repairs, firstLoad) {
   // empty (className="empty", center-aligned) and later gets real
   // content keeps showing centered text with the new content in it.
   el.className = "";
-  el.innerHTML = repairs
-    .map((r) => {
-      const issues = r.repair_record_issues || [];
-      return `
-      <details class="repair-card${firstLoad ? "" : " no-anim"}" data-id="${r.id}" ${openIds.has(r.id) ? "open" : ""}>
-        <summary class="repair-summary">
-          <div class="repair-summary-row">
-            <span class="truck-id">Truk ${r.truck_id}</span>
-            <span class="repair-summary-meta">Servis #${r.seq} &middot; ${issues.length} masalah</span>
-          </div>
-          <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
-        </summary>
-        <div class="repair-body">
-          <div class="card-meta">Mulai ${formatDate(r.downtime_start)}</div>
-          <div class="card-section">
-            ${issues
-              .map((issue, i) => `
-                <div class="issue-edit-row" data-issue-id="${issue.id}">
-                  <div class="issue-header">
-                    <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
-                    <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span>
-                  </div>
-                  ${(() => {
-                    if (issue.status === "done" || issue.status === "verified") return "";
-                    const blocks = [];
-                    // 2026-08-31, direct feedback: dispatcher often
-                    // receives incoming deliveries, so may see a part
-                    // arrive before the mechanic does -- let them
-                    // trigger Mulai Perbaikan too, same approval gate.
-                    if (issue.status === "vendor_selected") {
-                      const quotes = issue.vendor_quotes || [];
-                      const approved = quotes.find((q) => q.is_selected && q.approved_by_owner);
-                      if (approved) {
-                        blocks.push(`<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`);
-                      } else {
-                        const selected = quotes.find((q) => q.is_selected);
-                        blocks.push(`<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`);
-                      }
-                    }
-                    // Redefined 2026-09-03, direct instruction: callable
-                    // repeatedly for any status short of done/verified
-                    // (was: only ever once, at 'reported') -- "needs to
-                    // be allowed multiple times ... in case they forget
-                    // to type something ... even while sedang
-                    // dikerjakan." Shows what's already been requested
-                    // so a repeat submission reads as adding to it.
-                    // UI/UX pass 4, 2026-09-17, direct feedback ("allow
-                    // for multiple suku cadang item requests"): already-
-                    // requested items now render as individual tags
-                    // (was one run-on sentence), and the input itself
-                    // supports N rows via "+ Tambah item lain" -- see
-                    // .parts-request's own CSS comment for the full
-                    // reasoning. dispatcher-api still only receives one
-                    // comma-joined parts_used string per submission, so
-                    // no backend change was needed.
-                    const existingParts = issue.parts_used
-                      ? issue.parts_used.split(",").map((s) => s.trim()).filter(Boolean)
-                      : [];
-                    const tags = existingParts.length
-                      ? `<div class="parts-tags">${existingParts.map((p) => `<span class="parts-tag">${p}</span>`).join("")}</div>`
-                      : "";
-                    blocks.push(`
-                      <div class="parts-request">
-                        ${tags}
-                        <label>${existingParts.length ? "Tambah suku cadang lain (opsional)" : "Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)"}</label>
-                        <div class="parts-inputs">
-                          <div class="parts-input-row"><input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" /></div>
-                        </div>
-                        <button type="button" class="btn-add-part">+ Tambah item lain</button>
-                        <button class="btn-request-parts">${existingParts.length ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
-                      </div>
-                    `);
-                    return blocks.join("");
-                  })()}
-                </div>
-              `)
-              .join("")}
-          </div>
-        </div>
-      </details>
-    `;
-    })
-    .join("");
+  // Direct instruction, 2026-09-20: longest downtime first -- the
+  // truck that's been sitting broken longest surfaces first regardless
+  // of status, rather than whatever order the backend happened to
+  // return (previously seq descending, i.e. newest-first).
+  const sorted = [...repairs].sort((a, b) => new Date(a.downtime_start) - new Date(b.downtime_start));
+  currentOpenRepairs = sorted;
+  el.innerHTML = sorted.map((r) => renderRepairSummaryCard(r, firstLoad)).join("");
 
-  el.querySelectorAll(".btn-start-progress").forEach((btn) => {
-    btn.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
+  el.querySelectorAll(".repair-summary-card").forEach((card) => {
+    card.addEventListener("click", () => openRepairDetail(card.dataset.id));
+  });
+
+  // Keep the sheet open across a refresh (e.g. after start-progress or
+  // request-parts submitted from inside it) instead of snapping shut --
+  // re-render its content from the freshly fetched data so the
+  // dispatcher sees the result without losing their place.
+  if (openDetailId) {
+    const stillOpen = sorted.find((r) => r.id === openDetailId);
+    if (stillOpen) renderDetailSheetContent(stillOpen);
+    else closeDetailSheet();
+  }
+}
+
+// UI/UX master-detail redesign, 2026-09-20, direct instruction: "list
+// shows a clean summary, tap opens a full-screen detail sheet" -- the
+// same fix Cek Armada already got for its own "formatted messy"
+// feedback, applied here since Tinjau Servis had the same expand-in-
+// place problem. Same box as a Sign-off card (.card), plus a quiet
+// blocked-on note when an issue is stuck on parts/vendor -- useful
+// triage info without opening the sheet.
+function renderRepairSummaryCard(r, firstLoad) {
+  const issues = r.repair_record_issues || [];
+  const blocked = issues.some((i) => i.status === "vendor_selected")
+    ? "Menunggu persetujuan vendor/part"
+    : issues.some((i) => i.status === "request_for_parts")
+    ? "Menunggu suku cadang"
+    : null;
+  return `
+    <div class="card repair-summary-card${firstLoad ? "" : " no-anim"}" data-id="${r.id}">
+      <div class="card-title">
+        <span class="truck-id">Truk ${r.truck_id}</span>
+        <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
+      </div>
+      <div class="card-meta">Servis #${r.seq} &middot; ${issues.length} masalah &middot; Turun ${formatDuration(r.downtime_start)}</div>
+      ${blocked ? `<div class="repair-blocked-note">⏳ ${blocked}</div>` : ""}
+    </div>
+  `;
+}
+
+// Per-issue editable rows -- unchanged content from the old inline
+// accordion body, just factored out since only the detail sheet needs
+// it now (the summary card above shows a count, not the issues
+// themselves).
+function renderIssuesHtml(issues) {
+  return issues
+    .map((issue) => `
+      <div class="issue-edit-row" data-issue-id="${issue.id}">
+        <div class="issue-header">
+          <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
+          <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span>
+        </div>
+        ${(() => {
+          if (issue.status === "done" || issue.status === "verified") return "";
+          const blocks = [];
+          // 2026-08-31, direct feedback: dispatcher often
+          // receives incoming deliveries, so may see a part
+          // arrive before the mechanic does -- let them
+          // trigger Mulai Perbaikan too, same approval gate.
+          if (issue.status === "vendor_selected") {
+            const quotes = issue.vendor_quotes || [];
+            const approved = quotes.find((q) => q.is_selected && q.approved_by_owner);
+            if (approved) {
+              blocks.push(`<div class="issue-vendor-note">Vendor: ${approved.vendor_name} -- sudah disetujui</div><button class="btn-start-progress" data-issue-id="${issue.id}">Mulai Perbaikan (Part Sudah Sampai)</button>`);
+            } else {
+              const selected = quotes.find((q) => q.is_selected);
+              blocks.push(`<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`);
+            }
+          }
+          // Redefined 2026-09-03, direct instruction: callable
+          // repeatedly for any status short of done/verified
+          // (was: only ever once, at 'reported') -- "needs to
+          // be allowed multiple times ... in case they forget
+          // to type something ... even while sedang
+          // dikerjakan." Shows what's already been requested
+          // so a repeat submission reads as adding to it.
+          // UI/UX pass 4, 2026-09-17, direct feedback ("allow
+          // for multiple suku cadang item requests"): already-
+          // requested items now render as individual tags
+          // (was one run-on sentence), and the input itself
+          // supports N rows via "+ Tambah item lain" -- see
+          // .parts-request's own CSS comment for the full
+          // reasoning. dispatcher-api still only receives one
+          // comma-joined parts_used string per submission, so
+          // no backend change was needed.
+          const existingParts = issue.parts_used
+            ? issue.parts_used.split(",").map((s) => s.trim()).filter(Boolean)
+            : [];
+          const tags = existingParts.length
+            ? `<div class="parts-tags">${existingParts.map((p) => `<span class="parts-tag">${p}</span>`).join("")}</div>`
+            : "";
+          blocks.push(`
+            <div class="parts-request">
+              ${tags}
+              <label>${existingParts.length ? "Tambah suku cadang lain (opsional)" : "Suku cadang dibutuhkan (kosongkan jika tidak perlu beli apa-apa)"}</label>
+              <div class="parts-inputs">
+                <div class="parts-input-row"><input type="text" class="issue-parts-needed" placeholder="mis. kampas rem" /></div>
+              </div>
+              <button type="button" class="btn-add-part">+ Tambah item lain</button>
+              <button class="btn-request-parts">${existingParts.length ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
+            </div>
+          `);
+          return blocks.join("");
+        })()}
+      </div>
+    `)
+    .join("");
+}
+
+function renderDetailSheetContent(r) {
+  const issues = r.repair_record_issues || [];
+  const sheet = document.getElementById("detailSheet");
+  sheet.innerHTML = `
+    <div class="detail-sheet-header">
+      <div class="card-title">
+        <span class="truck-id">Truk ${r.truck_id}</span>
+        <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
+      </div>
+      <button type="button" class="detail-sheet-close" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="detail-sheet-body">
+      <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}</div>
+      <div class="card-section">${renderIssuesHtml(issues)}</div>
+    </div>
+  `;
+  wireDetailSheetHandlers(sheet, r.id);
+}
+
+function openRepairDetail(id) {
+  const r = currentOpenRepairs.find((x) => x.id === id);
+  if (!r) return;
+  openDetailId = id;
+  renderDetailSheetContent(r);
+  document.getElementById("detailSheetOverlay").classList.add("show");
+}
+
+function closeDetailSheet() {
+  openDetailId = null;
+  document.getElementById("detailSheetOverlay").classList.remove("show");
+  document.getElementById("detailSheet").innerHTML = "";
+}
+
+// Scoped to the one sheet, one repair at a time -- so button handlers
+// take repairId directly instead of walking up to a card's own
+// dataset like the old inline-accordion version did.
+function wireDetailSheetHandlers(sheet, repairId) {
+  sheet.querySelector(".detail-sheet-close").addEventListener("click", closeDetailSheet);
+
+  sheet.querySelectorAll(".btn-start-progress").forEach((btn) => {
+    btn.addEventListener("click", async () => {
       btn.disabled = true;
       const label = btn.textContent;
       btn.textContent = "Memulai...";
@@ -733,7 +836,7 @@ function renderOpenRepairs(repairs, firstLoad) {
   // input row (with its own remove button) directly in the DOM --
   // no round trip, since this is purely local form state until
   // "Ajukan..." is actually pressed.
-  el.querySelectorAll(".btn-add-part").forEach((btn) => {
+  sheet.querySelectorAll(".btn-add-part").forEach((btn) => {
     btn.addEventListener("click", () => {
       const container = btn.closest(".parts-request").querySelector(".parts-inputs");
       const row = document.createElement("div");
@@ -748,10 +851,9 @@ function renderOpenRepairs(repairs, firstLoad) {
   // Per-issue, mirrors mekanik-miniapp's own request-parts button --
   // see the template's own comment for why this replaced the old
   // whole-card btn-complete.
-  el.querySelectorAll(".btn-request-parts").forEach((btn) => {
+  sheet.querySelectorAll(".btn-request-parts").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest(".issue-edit-row");
-      const card = btn.closest(".repair-card");
       // Every ".issue-parts-needed" input in this issue's box (the
       // first fixed row plus any "+ Tambah item lain" rows) joins into
       // one comma-separated string -- dispatcher-api's request_parts
@@ -765,7 +867,7 @@ function renderOpenRepairs(repairs, firstLoad) {
       btn.textContent = "Mengirim...";
       try {
         await call("request_parts", {
-          repair_record_id: card.dataset.id,
+          repair_record_id: repairId,
           issues: [{ id: row.dataset.issueId, parts_used: values.join(", ") }],
         });
         toast(values.length > 1 ? `Permintaan ${values.length} item suku cadang diajukan.` : "Permintaan suku cadang diajukan.");
@@ -778,8 +880,11 @@ function renderOpenRepairs(repairs, firstLoad) {
       }
     });
   });
-
 }
+
+document.getElementById("detailSheetOverlay").addEventListener("click", (ev) => {
+  if (ev.target.id === "detailSheetOverlay") closeDetailSheet();
+});
 
 // Dedicated Sign-off tab (2026-09-03, direct instruction: "dispatcher
 // should have the same Sign-off tab as mechanic for all things that
