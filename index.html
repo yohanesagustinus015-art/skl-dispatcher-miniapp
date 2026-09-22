@@ -61,7 +61,7 @@
   }
   .tab-indicator {
     position: absolute; top: 3px; bottom: 3px; left: 3px;
-    width: calc((100% - 6px) / 3); background: var(--surface);
+    width: calc((100% - 6px) / 2); background: var(--surface);
     border-radius: 8px; box-shadow: 0 1px 3px rgba(43, 36, 32, 0.12);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); z-index: 0;
   }
@@ -81,10 +81,22 @@
   @keyframes screenIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes cardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) {
-    .screen.active, .card, .board-col, .chip.flash { animation: none !important; }
+    .screen.active, .card, .board-col { animation: none !important; }
     .tab-indicator, .tab, button, .toast, .chip, .detail-sheet-overlay, .detail-sheet { transition: none !important; }
     .skeleton-line::after { animation: none !important; }
   }
+  /* UI/UX pass 6, 2026-09-19, direct feedback ("it loads, and then
+     flickers as if loading again, every single time"): every tab
+     switch re-fetches and fully replaces the list's innerHTML, and
+     every card/column in that replacement always carried the cardIn
+     entrance animation -- correct for the very first paint, but it
+     was replaying on every single refresh too, landing a beat after
+     the screen's own screenIn fade (which starts immediately on tap,
+     before the fetch returns) -- two separate animations read as one
+     load finishing and a second one starting. Applied to any card
+     rendered on a repeat visit instead of the true first one (see
+     renderRepairs/renderYard's own firstLoad tracking). */
+  .no-anim { animation: none !important; }
   label { display: block; font-size: 13px; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
   select, input, textarea {
     width: 100%; padding: var(--space-3); border-radius: 8px; border: 1px solid var(--border);
@@ -129,7 +141,7 @@
      Servis had the same expand-in-place problem. Sorted by longest
      downtime first (direct instruction), so the truck that's been
      sitting broken longest is always what a dispatcher sees first,
-     regardless of status -- see renderOpenRepairs' own sort comment. */
+     regardless of status -- see renderRepairList's own sort comment. */
   .repair-summary-card { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.1s ease; }
   .repair-summary-card:active { transform: scale(0.98); }
   .repair-blocked-note {
@@ -177,10 +189,10 @@
   .status-chip-open { background: var(--surface2); color: var(--muted); }
   .status-chip-pending_signoff { background: #FCEFD8; color: #9A5B0A; }
   .status-chip-signed_off { background: #E1F0E6; color: var(--green); }
-  /* Shared box for both plain lists -- Sign-off (2026-09-03: 'dispatcher
-     should have the same Sign-off tab as mechanic') and, since
-     2026-09-20, Tinjau Servis's own summary cards (see the
-     master-detail redesign comment above .repair-summary-card). */
+  /* The one card box the Servis list uses (see the master-detail
+     redesign comment above .repair-summary-card). Used to be shared by
+     two tabs -- Tinjau Servis and a separate Sign-off tab -- merged into
+     one list on 2026-09-22; see loadRepairs' comment for why. */
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     padding: var(--space-4); margin-bottom: var(--space-3);
@@ -200,8 +212,8 @@
      wrapped unpredictably once the name+description got long -- the
      badge could land mid-sentence on its own line. Splitting them into
      a two-column flex row instead: name wraps freely on the left,
-     badge stays pinned top-right, same pattern .repair-summary-row
-     already uses one level up for truck-id vs. status-chip. */
+     badge stays pinned top-right, same pattern .card-title already
+     uses one level up for truck-id vs. status-chip. */
   .issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
   .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; }
   .issue-status-badge { display: inline-block; flex-shrink: 0; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px var(--space-2); vertical-align: middle; }
@@ -271,19 +283,26 @@
   /* UI/UX pass, 2026-09-17: every button gets real tap feedback (a
      slight scale-down) instead of only a :hover state, which a
      touchscreen never triggers -- covers .btn-start-progress,
-     .btn-request-parts, .btn-dispatcher-signoff, .btn-yard-note-submit,
-     and the yard bucket buttons below, all of which reuse this rule
-     rather than each declaring their own. */
+     .btn-request-parts, .btn-dispatcher-signoff, the picker's
+     Batal/Konfirmasi pair, and the yard bucket buttons below, all of
+     which reuse this rule rather than each declaring their own. */
   button:not(:disabled):active { transform: scale(0.97); }
   /* Floating pill instead of a full-width bar pinned to the bottom edge
      -- reads as a message TO the dispatcher, not a bar of the app's own
      chrome. display:none replaced with an opacity/transform transition
      (toggled via the .show class in the toast() function below) so it
-     actually animates in/out instead of snapping. */
+     actually animates in/out instead of snapping.
+     z-index is the TOP of the stack on purpose (review pass, 2026-09-22):
+     it used to be 10, beneath the picker (20) and the detail sheet (30),
+     and this pill sits at the bottom of the screen -- exactly where the
+     sheet panel lives. So every toast fired from inside the sheet
+     ("Perbaikan dimulai", both "Gagal: ..." errors) rendered behind an
+     opaque panel and was never seen. A toast is feedback on whatever the
+     dispatcher just did; nothing should be allowed to cover it. */
   .toast {
     position: fixed; left: 50%; bottom: var(--space-6); max-width: calc(100% - 32px);
     padding: var(--space-3) var(--space-5); border-radius: 999px; background: var(--text); color: var(--bg);
-    font-size: 13.5px; font-weight: 500; text-align: center; z-index: 10;
+    font-size: 13.5px; font-weight: 500; text-align: center; z-index: 40;
     box-shadow: 0 6px 20px rgba(43, 36, 32, 0.25);
     opacity: 0; pointer-events: none;
     transform: translate(-50%, 8px);
@@ -295,18 +314,6 @@
      on it), so it wants a deliberately larger breather than any card
      rhythm value would give it. */
   .not-telegram { text-align: center; padding: 60px var(--space-5); color: var(--muted); }
-  /* UI/UX pass 6, 2026-09-19, direct feedback ("it loads, and then
-     flickers as if loading again, every single time"): every tab
-     switch re-fetches and fully replaces the list's innerHTML, and
-     every card/column in that replacement always carried the cardIn
-     entrance animation -- correct for the very first paint, but it
-     was replaying on every single refresh too, landing a beat after
-     the screen's own screenIn fade (which starts immediately on tap,
-     before the fetch returns) -- two separate animations read as one
-     load finishing and a second one starting. Applied to any card
-     rendered on a repeat visit instead of the true first one (see
-     renderRepairs/renderYard's own firstLoad tracking). */
-  .no-anim { animation: none !important; }
   /* UI/UX pass 5, 2026-09-19, direct feedback ("cek pool especially so
      [ugly/lacking]" -- see the full design conversation this
      implements): replaces the per-truck card with a 2x2 button grid
@@ -342,7 +349,7 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4);
     margin-bottom: var(--space-3); font-size: 11px; color: var(--muted);
   }
-  .board-legend .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .board-legend .legend-item { display: inline-flex; align-items: center; gap: var(--space-1); }
   .legend-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
     background: #FCEFD8; border: 1px solid #C98A2E;
@@ -385,11 +392,6 @@
      flagged, not alarmed, since resolving it is Alexander's job now,
      not the dispatcher's (see block comment above). */
   .chip.pending-review { border-color: #C98A2E; background: #FCEFD8; color: #7A4A0A; }
-  .chip.flash { animation: chipFlash 0.7s ease; }
-  @keyframes chipFlash {
-    0% { background: var(--accent-dim); border-color: var(--accent); transform: scale(1.12); }
-    100% { transform: scale(1); }
-  }
   /* Loaded/kosong sub-control, redesigned 2026-09-19 per direct
      feedback on the first version (a single circle cycling M -> K):
      "not fully intuitively explanatory ... clicking it is always
@@ -403,14 +405,14 @@
      vs K too, could be being fixed while loaded" (a bucket a truck can
      sensibly sit in with cargo still aboard; matches set_loaded's own
      server-side LOADED_ELIGIBLE_BUCKETS). */
-  .chip.loaded-chip { display: inline-flex; align-items: center; gap: 4px; padding-right: 3px; }
+  .chip.loaded-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: 3px; }
   .chip-loaded-group {
     display: inline-flex; border-radius: 999px; overflow: hidden;
     border: 1px solid var(--border);
   }
   .chip-loaded-btn {
     display: inline-flex; align-items: center; justify-content: center;
-    min-width: 16px; height: 16px; padding: 0 4px; line-height: 1;
+    min-width: 16px; height: 16px; padding: 0 var(--space-1); line-height: 1;
     font-family: var(--sans); font-size: 9.5px; font-weight: 700;
     border: none; background: var(--surface); color: var(--dim);
     cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.1s ease, color 0.1s ease;
@@ -455,7 +457,7 @@
 <body>
 
 <div id="notTelegram" class="not-telegram" style="display:none">
-  Buka dashboard ini dari tombol "📋 Buka Dashboard Dispatcher" di chat bot SKL Lapangan, bukan dari browser langsung.
+  Buka dashboard ini dari tombol "ð Buka Dashboard Dispatcher" di chat bot SKL Lapangan, bukan dari browser langsung.
 </div>
 
 <div id="app" style="display:none">
@@ -464,20 +466,13 @@
 
   <div class="tabs" id="tabsWrap">
     <div class="tab-indicator" id="tabIndicator"></div>
-    <div class="tab active" data-screen="repairs" data-index="0">Tinjau Servis</div>
-    <div class="tab" data-screen="signoff" data-index="1">Sign-off</div>
-    <div class="tab" data-screen="yard" data-index="2">Cek Armada</div>
+    <div class="tab active" data-screen="repairs" data-index="0">Servis</div>
+    <div class="tab" data-screen="yard" data-index="1">Cek Armada</div>
   </div>
 
   <div class="screen active" id="screen-repairs">
     <div id="list-repairs">
       <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
-      <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
-    </div>
-  </div>
-
-  <div class="screen" id="screen-signoff">
-    <div id="list-signoff">
       <div class="skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w80"></div><div class="skeleton-line w60"></div></div>
     </div>
   </div>
@@ -511,7 +506,7 @@ const BUCKET_LABELS = { pool: "Pool", under_repair: "Sedang diperbaiki", at_inda
 
 // Indonesian labels for repair_records.status -- direct feedback,
 // 2026-08-29: "status: 'xxx' should have xx be in bahasa indonesia."
-const STATUS_LABELS = { open: "Sedang dikerjakan", pending_signoff: "Menunggu sign-off", signed_off: "Sudah sign-off" };
+const STATUS_LABELS = { open: "Sedang dikerjakan", pending_signoff: "Menunggu sign-off", signed_off: "Sudah sign-off", closed: "Ditutup" };
 
 // Per-issue lifecycle (2026-08-30 schema extension: repair_record_issues.status),
 // separate from the session-level STATUS_LABELS above. Shown as a small badge
@@ -593,21 +588,25 @@ function formatDate(iso) {
 // a real bug that pattern needs to watch for.
 let repairsLoaded = false;
 
-// Single combined fetch feeds both Tinjau Servis and Sign-off --
-// direct instruction 2026-09-03: "dispatcher should have the same
-// Sign-off tab as mechanic for all things that only require sign
-// off." fetchActiveRepairs already returns every repair not yet
-// signed_off (open AND pending_signoff together, see that function's
-// own comment); split here by status instead of adding a second
-// backend action/round trip, since the data's already all there.
+// One list, not two (2026-09-22). Tinjau Servis and Sign-off used to be
+// separate tabs fed by this same fetch and split client-side by status --
+// a split added 2026-09-03 to mirror the mechanic app's own tabs. Merged
+// on direct instruction ("sign off and tinjau servis should be the same
+// screen, since it's for the same thing") once the data showed why the
+// split had never earned its keep: no repair_records row has EVER
+// carried status='pending_signoff', so the Sign-off tab had shown its
+// empty state every day since it was built. Worse, the two hardcoded
+// filters (=== "open" / === "pending_signoff") silently dropped any
+// status they didn't name -- two 'closed' rows were being fetched and
+// discarded without rendering. dispatcher-api now returns an explicit
+// allow-list of dispatcher-actionable statuses, and this renders every
+// row it gets; a new status fails closed at the API instead of vanishing
+// at runtime here.
 async function loadRepairs() {
-  const openEl = document.getElementById("list-repairs");
-  const signoffEl = document.getElementById("list-signoff");
+  const el = document.getElementById("list-repairs");
   if (!repairsLoaded) {
-    openEl.className = "";
-    openEl.innerHTML = skeletonHtml(2);
-    signoffEl.className = "";
-    signoffEl.innerHTML = skeletonHtml(1);
+    el.className = "";
+    el.innerHTML = skeletonHtml(2);
   }
   const { repairs } = await call("list_pending_repairs");
   renderRepairs(repairs);
@@ -616,9 +615,7 @@ async function loadRepairs() {
 function renderRepairs(repairs) {
   const firstLoad = !repairsLoaded;
   repairsLoaded = true;
-  const all = repairs || [];
-  renderOpenRepairs(all.filter((r) => r.status === "open"), firstLoad);
-  renderSignoffRepairs(all.filter((r) => r.status === "pending_signoff"), firstLoad);
+  renderRepairList(repairs || [], firstLoad);
 }
 
 // Elapsed time since downtime_start, for the summary card's own
@@ -634,19 +631,26 @@ function formatDuration(startIso) {
   return days > 0 ? `${days} hari ${hours} jam` : `${hours} jam`;
 }
 
-// Cache of the currently-rendered open repairs, so openRepairDetail
-// can look one up by id without a second fetch, and a post-action
-// refresh (see renderOpenRepairs' own openDetailId handling) can
-// re-render the open sheet from fresh data without closing it.
-let currentOpenRepairs = [];
+// Cache of the currently-rendered repairs, so openRepairDetail can look
+// one up by id without a second fetch, and a post-action refresh (see
+// renderRepairList's own openDetailId handling) can re-render the open
+// sheet from fresh data without closing it.
+let currentRepairs = [];
 let openDetailId = null;
 
-function renderOpenRepairs(repairs, firstLoad) {
+// Whose problem is it? A pending sign-off is the DISPATCHER's decision;
+// an open repair is the mechanic's to finish, the dispatcher only gets
+// involved if parts are asked for. So sign-offs sort to the top -- that
+// was the one real benefit of the old separate tab, kept here without
+// the tab. Anything unranked sinks to the bottom rather than crashing.
+const STATUS_RANK = { pending_signoff: 0, open: 1 };
+
+function renderRepairList(repairs, firstLoad) {
   const el = document.getElementById("list-repairs");
   if (!repairs || repairs.length === 0) {
-    currentOpenRepairs = [];
+    currentRepairs = [];
     el.className = "empty";
-    el.innerHTML = EMPTY_ICON + "Tidak ada servis yang perlu dilengkapi.";
+    el.innerHTML = EMPTY_ICON + "Tidak ada servis yang perlu ditangani.";
     if (openDetailId) closeDetailSheet();
     return;
   }
@@ -656,12 +660,13 @@ function renderOpenRepairs(repairs, firstLoad) {
   // empty (className="empty", center-aligned) and later gets real
   // content keeps showing centered text with the new content in it.
   el.className = "";
-  // Direct instruction, 2026-09-20: longest downtime first -- the
-  // truck that's been sitting broken longest surfaces first regardless
-  // of status, rather than whatever order the backend happened to
-  // return (previously seq descending, i.e. newest-first).
-  const sorted = [...repairs].sort((a, b) => new Date(a.downtime_start) - new Date(b.downtime_start));
-  currentOpenRepairs = sorted;
+  // Within a rank, longest downtime first (direct instruction,
+  // 2026-09-20) -- the truck that's been sitting broken longest surfaces
+  // first, rather than whatever order the backend happened to return.
+  const sorted = [...repairs].sort((a, b) =>
+    ((STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9)) ||
+    (new Date(a.downtime_start) - new Date(b.downtime_start)));
+  currentRepairs = sorted;
   el.innerHTML = sorted.map((r) => renderRepairSummaryCard(r, firstLoad)).join("");
 
   el.querySelectorAll(".repair-summary-card").forEach((card) => {
@@ -700,7 +705,7 @@ function renderRepairSummaryCard(r, firstLoad) {
         <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
       </div>
       <div class="card-meta">Servis #${r.seq} &middot; ${issues.length} masalah &middot; Turun ${formatDuration(r.downtime_start)}</div>
-      ${blocked ? `<div class="repair-blocked-note">⏳ ${blocked}</div>` : ""}
+      ${blocked ? `<div class="repair-blocked-note">â³ ${blocked}</div>` : ""}
     </div>
   `;
 }
@@ -774,8 +779,26 @@ function renderIssuesHtml(issues) {
     .join("");
 }
 
+// Read-only issue rows for a repair awaiting sign-off -- the mechanic has
+// already called it done, so there's nothing left to edit per issue;
+// the dispatcher's only remaining move is the sign-off itself, below.
+function renderIssuesReadonlyHtml(issues) {
+  return issues
+    .map((i) => `<div class="issue-row"><div class="issue-header"><span>${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""}</span><span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div></div>`)
+    .join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>';
+}
+
+// The sheet's body is decided by status, not by which tab it came from
+// (2026-09-22, one list): an open repair gets the per-issue parts/progress
+// controls; one awaiting sign-off gets its issues read-only plus the
+// sign-off form that used to live inline on the old Sign-off tab's cards.
+// Direct instruction 2026-09-02 still holds for that form: a dispatcher
+// can sign off in a mechanic's place, but only with a typed reason,
+// refused client-side and server-side if empty.
 function renderDetailSheetContent(r) {
   const issues = r.repair_record_issues || [];
+  const awaitingSignoff = r.status === "pending_signoff";
+  const mechanicLine = r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : "";
   const sheet = document.getElementById("detailSheet");
   sheet.innerHTML = `
     <div class="detail-sheet-header">
@@ -786,15 +809,22 @@ function renderDetailSheetContent(r) {
       <button type="button" class="detail-sheet-close" aria-label="Tutup">&times;</button>
     </div>
     <div class="detail-sheet-body">
-      <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}</div>
-      <div class="card-section">${renderIssuesHtml(issues)}</div>
+      <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}${mechanicLine}</div>
+      <div class="card-section">${awaitingSignoff ? renderIssuesReadonlyHtml(issues) : renderIssuesHtml(issues)}</div>
+      ${awaitingSignoff ? `
+        <div class="card-section signoff-section">
+          <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
+          <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
+          <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
+        </div>
+      ` : ""}
     </div>
   `;
   wireDetailSheetHandlers(sheet, r.id);
 }
 
 function openRepairDetail(id) {
-  const r = currentOpenRepairs.find((x) => x.id === id);
+  const r = currentRepairs.find((x) => x.id === id);
   if (!r) return;
   openDetailId = id;
   renderDetailSheetContent(r);
@@ -880,78 +910,40 @@ function wireDetailSheetHandlers(sheet, repairId) {
       }
     });
   });
+
+  // Sign-off, only present in the sheet when status is pending_signoff
+  // (see renderDetailSheetContent). Closes the sheet on success rather
+  // than re-rendering it: the record leaves the dispatcher's list the
+  // moment it's signed off, so there's nothing left to show in it.
+  const signoffBtn = sheet.querySelector(".btn-dispatcher-signoff");
+  if (signoffBtn) {
+    signoffBtn.addEventListener("click", async () => {
+      const reason = sheet.querySelector(".signoff-reason").value.trim();
+      if (!reason) {
+        toast("Alasan wajib diisi -- kenapa mekanik lain tidak bisa konfirmasi sendiri?");
+        return;
+      }
+      signoffBtn.disabled = true;
+      const label = signoffBtn.textContent;
+      signoffBtn.textContent = "Mengonfirmasi...";
+      try {
+        await call("dispatcher_sign_off", { id: repairId, reason });
+        toast("Sign-off tercatat.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        closeDetailSheet();
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        signoffBtn.disabled = false;
+        signoffBtn.textContent = label;
+      }
+    });
+  }
 }
 
 document.getElementById("detailSheetOverlay").addEventListener("click", (ev) => {
   if (ev.target.id === "detailSheetOverlay") closeDetailSheet();
 });
-
-// Dedicated Sign-off tab (2026-09-03, direct instruction: "dispatcher
-// should have the same Sign-off tab as mechanic for all things that
-// only require sign off"). Was previously a section embedded inside a
-// Tinjau Servis card when status happened to be pending_signoff --
-// pulled out into its own tab/screen to match the mechanic app's own
-// split (Diperbaiki vs Sign-off), so a dispatcher scanning for what
-// needs a decision doesn't have to open every Tinjau Servis card to
-// find the ones actually awaiting sign-off.
-function renderSignoffRepairs(repairs, firstLoad) {
-  const el = document.getElementById("list-signoff");
-  if (!repairs || repairs.length === 0) {
-    el.className = "empty";
-    el.innerHTML = EMPTY_ICON + "Tidak ada servis menunggu sign-off.";
-    return;
-  }
-  el.className = "";
-  el.innerHTML = repairs
-    .map((r) => {
-      const issues = r.repair_record_issues || [];
-      return `
-      <div class="card${firstLoad ? "" : " no-anim"}" data-id="${r.id}">
-        <div class="card-title">
-          <span class="truck-id">Truk ${r.truck_id}</span>
-          <span class="status-chip status-chip-pending_signoff">${STATUS_LABELS.pending_signoff}</span>
-        </div>
-        <div class="card-meta">Servis #${r.seq} &middot; Mulai ${formatDate(r.downtime_start)}${r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : ""}</div>
-        <div class="card-section">
-          ${issues.map((i) => `<div class="issue-row"><div class="issue-header"><span>${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""}</span><span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div></div>`).join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>'}
-        </div>
-        <div class="card-section signoff-section" data-id="${r.id}">
-          <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
-          <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
-          <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
-        </div>
-      </div>
-    `;
-    })
-    .join("");
-
-  // New, direct instruction 2026-09-02: dispatcher can sign off a
-  // repair the mechanic already marked done, but only with a typed
-  // reason -- refused client-side (and server-side too) if empty.
-  el.querySelectorAll(".btn-dispatcher-signoff").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const section = btn.closest(".signoff-section");
-      const reason = section.querySelector(".signoff-reason").value.trim();
-      if (!reason) {
-        toast("Alasan wajib diisi -- kenapa mekanik lain tidak bisa konfirmasi sendiri?");
-        return;
-      }
-      btn.disabled = true;
-      const label = btn.textContent;
-      btn.textContent = "Mengonfirmasi...";
-      try {
-        await call("dispatcher_sign_off", { id: section.dataset.id, reason });
-        toast("Sign-off tercatat.");
-        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
-        loadRepairs();
-      } catch (e) {
-        toast("Gagal: " + e.message);
-        btn.disabled = false;
-        btn.textContent = label;
-      }
-    });
-  });
-}
 
 let yardLoaded = false;
 
@@ -1078,7 +1070,7 @@ function renderYard(checkins) {
   });
 
   // Own click target, stopped from bubbling to the chip's own
-  // reassign-picker listener above -- tapping M/K/? cycles the loaded
+  // reassign-picker listener above -- tapping M or K sets that exact
   // state directly, tapping the rest of the chip still opens the
   // picker as before.
   el.querySelectorAll(".chip-loaded-btn").forEach((btn) => {
