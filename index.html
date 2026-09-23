@@ -232,7 +232,13 @@
   .issue-status-badge-in_progress { background: var(--accent-dim); color: var(--accent); }
   .issue-status-badge-done, .issue-status-badge-verified { background: #E1F0E6; color: var(--green); }
   .issue-vendor-note { font-size: 12.5px; color: var(--muted); margin: var(--space-2) 0; }
-  .btn-start-progress { width: 100%; margin: var(--space-1) 0 var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  /* .btn-start-no-parts (2026-09-23) shares this look on purpose -- same
+     "start the work" action, just a different trigger (no vendor/parts
+     step involved). Deliberately its own class rather than reusing
+     .btn-start-progress on the element itself: that class is also a JS
+     query selector (see wireDetailSheetHandlers), and both buttons on
+     screen at once would each fire the OTHER's handler too. */
+  .btn-start-progress, .btn-start-no-parts { width: 100%; margin: var(--space-1) 0 var(--space-2); padding: var(--space-2); border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
   /* UI/UX pass 4, 2026-09-17, direct feedback ("allow for multiple
      suku cadang item requests"): was a single text input, so more than
      one part meant either cramming several names into one field or
@@ -638,6 +644,12 @@ function formatDuration(startIso) {
 let currentRepairs = [];
 let openDetailId = null;
 
+// Active mechanics, fetched once at page init (see init_data's own
+// comment) and reused across every refresh -- powers the "record on a
+// mechanic's behalf" buttons added 2026-09-23 (Oki/Surady still can't log
+// into mekanik-api at all, so Farman relays what they say over WhatsApp).
+let mechanicsList = [];
+
 // Whose problem is it? A pending sign-off is the DISPATCHER's decision;
 // an open repair is the mechanic's to finish, the dispatcher only gets
 // involved if parts are asked for. So sign-offs sort to the top -- that
@@ -739,6 +751,21 @@ function renderIssuesHtml(issues) {
               blocks.push(`<div class="issue-vendor-note">${selected ? "Menunggu persetujuan pemilik: " + selected.vendor_name : "Menunggu staff memilih vendor"}</div>`);
             }
           }
+          // Added 2026-09-23, direct feedback: the only way to move an
+          // issue from reported/diagnosed to in_progress used to be
+          // submitting the parts-needed form with nothing typed in it --
+          // a real backend behavior (dispatcher-api's request_parts
+          // already treats a blank submission on a not-yet-started issue
+          // as "nothing to buy, just get on with it"), but with no honest
+          // button for it. "how do we move from reported to in progress
+          // without needing to state parts ... sometimes just something
+          // loose inside so they tighten and we all good." Same call,
+          // same backend, just its own explicit button instead of a
+          // side effect of leaving a form empty.
+          const sourcingNotStarted = issue.status === "reported" || issue.status === "diagnosed";
+          if (sourcingNotStarted) {
+            blocks.push(`<button type="button" class="btn-start-no-parts" data-issue-id="${issue.id}">Mulai Perbaikan (Tidak Perlu Suku Cadang)</button>`);
+          }
           // Redefined 2026-09-03, direct instruction: callable
           // repeatedly for any status short of done/verified
           // (was: only ever once, at 'reported') -- "needs to
@@ -772,6 +799,24 @@ function renderIssuesHtml(issues) {
               <button class="btn-request-parts">${existingParts.length ? "Ajukan Tambahan" : "Ajukan Permintaan Suku Cadang"}</button>
             </div>
           `);
+          // Added 2026-09-23: only meaningful once an issue is actually
+          // in_progress -- same gate mekanik-api itself enforces on
+          // mark_issue_done, mirrored here so this button never offers an
+          // action the backend would just reject. Reuses .parts-request's
+          // boxed-subform look and .btn-request-parts's button look
+          // (renamed via a second class for its own click handler) rather
+          // than inventing new styling for what's visually the same kind
+          // of thing: a boxed action tucked under an issue.
+          if (issue.status === "in_progress" && mechanicsList.length) {
+            blocks.push(`
+              <div class="parts-request">
+                <label>Tandai selesai atas nama mekanik (direkam oleh dispatcher, lewat WhatsApp)</label>
+                <div class="parts-input-row">
+                  ${mechanicsList.map((m) => `<button type="button" class="btn-request-parts btn-record-issue-done" data-issue-id="${issue.id}" data-mechanic-id="${m.id}">${m.name}</button>`).join("")}
+                </div>
+              </div>
+            `);
+          }
           return blocks.join("");
         })()}
       </div>
@@ -799,6 +844,14 @@ function renderDetailSheetContent(r) {
   const issues = r.repair_record_issues || [];
   const awaitingSignoff = r.status === "pending_signoff";
   const mechanicLine = r.repaired_by_mechanic ? " &middot; oleh " + r.repaired_by_mechanic.name : "";
+  // Added 2026-09-23: repair-level counterpart to the per-issue
+  // record-done buttons above. Only offered once every issue is actually
+  // 'done' -- same all-issues-done gate record_mark_done enforces
+  // server-side (mirroring mekanik-api's own mark_done), so this section
+  // never shows an action the backend would refuse. issues.length check
+  // guards against a repair with zero issues ever showing this (shouldn't
+  // happen, but .every() on an empty array is vacuously true).
+  const allIssuesDone = issues.length > 0 && issues.every((i) => i.status === "done");
   const sheet = document.getElementById("detailSheet");
   sheet.innerHTML = `
     <div class="detail-sheet-header">
@@ -816,6 +869,12 @@ function renderDetailSheetContent(r) {
           <label>Alasan (wajib) -- kenapa mekanik lain tidak bisa konfirmasi sendiri?</label>
           <textarea class="signoff-reason" placeholder="mis. mekanik lain sedang di lapangan, tidak ada yang bisa hadir hari ini"></textarea>
           <button class="primary btn-dispatcher-signoff">Konfirmasi Selesai (Sign-off)</button>
+        </div>
+      ` : ""}
+      ${(!awaitingSignoff && allIssuesDone && mechanicsList.length) ? `
+        <div class="card-section signoff-section">
+          <label>Semua masalah sudah ditandai selesai. Servis selesai atas nama mekanik:</label>
+          ${mechanicsList.map((m) => `<button class="primary btn-record-mark-done" data-mechanic-id="${m.id}">Servis Selesai -- ${m.name}</button>`).join("")}
         </div>
       ` : ""}
     </div>
@@ -850,6 +909,33 @@ function wireDetailSheetHandlers(sheet, repairId) {
       btn.textContent = "Memulai...";
       try {
         await call("start_progress_from_vendor", { id: btn.dataset.issueId });
+        toast("Perbaikan dimulai.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    });
+  });
+
+  // Added 2026-09-23 -- see renderIssuesHtml's own comment. Same call
+  // the parts-request button below makes when submitted empty
+  // (dispatcher-api's request_parts already treats a blank submission on
+  // a not-yet-started issue as "nothing to buy, get on with it"); this
+  // is just an honest, dedicated button for that instead of a hidden
+  // side effect of leaving the parts form blank.
+  sheet.querySelectorAll(".btn-start-no-parts").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Memulai...";
+      try {
+        await call("request_parts", {
+          repair_record_id: repairId,
+          issues: [{ id: btn.dataset.issueId, parts_used: "" }],
+        });
         toast("Perbaikan dimulai.");
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         loadRepairs();
@@ -901,6 +987,49 @@ function wireDetailSheetHandlers(sheet, repairId) {
           issues: [{ id: row.dataset.issueId, parts_used: values.join(", ") }],
         });
         toast(values.length > 1 ? `Permintaan ${values.length} item suku cadang diajukan.` : "Permintaan suku cadang diajukan.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    });
+  });
+
+  // Added 2026-09-23 -- see renderIssuesHtml's own comment for why this
+  // exists (relayed completion, mechanics can't log in themselves).
+  sheet.querySelectorAll(".btn-record-issue-done").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Menyimpan...";
+      try {
+        await call("record_issue_done", { id: btn.dataset.issueId, mechanic_id: btn.dataset.mechanicId });
+        toast("Masalah ditandai selesai.");
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    });
+  });
+
+  // Repair-level counterpart -- see renderDetailSheetContent's own
+  // allIssuesDone comment. Sheet stays open after this succeeds (same
+  // openDetailId re-render loadRepairs already does elsewhere), so the
+  // dispatcher immediately sees the sheet flip into its own
+  // awaiting-sign-off view for the same repair.
+  sheet.querySelectorAll(".btn-record-mark-done").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = "Menyimpan...";
+      try {
+        await call("record_mark_done", { id: repairId, mechanic_id: btn.dataset.mechanicId });
+        toast("Servis ditandai selesai, menunggu sign-off.");
         if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
         loadRepairs();
       } catch (e) {
@@ -1235,7 +1364,8 @@ document.querySelectorAll(".tab").forEach((tab) => {
   // (list_pending_repairs + list_yard_checkins), rendering both tabs
   // immediately from the one response.
   try {
-    const { repairs, checkins } = await call("init_data");
+    const { repairs, checkins, mechanics } = await call("init_data");
+    mechanicsList = mechanics || [];
     renderRepairs(repairs);
     renderYard(checkins);
   } catch (e) {
