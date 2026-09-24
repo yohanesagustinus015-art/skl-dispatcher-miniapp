@@ -216,6 +216,26 @@
      uses one level up for truck-id vs. status-chip. */
   .issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
   .issue-edit-row .issue-name { font-size: 14px; font-weight: 600; }
+  /* Failure-mode tag (2026-09-24). Looks like a pill, IS a native
+     select: the invisible select sits over the pill, so one tap opens
+     the phone's own picker (iOS wheel / Android sheet) -- no custom
+     popover to build or get wrong. No visual difference between an AI
+     guess and a confirmed pick, on purpose; only "not chosen yet"
+     looks different, because that one asks for an action. */
+  .fm-tag {
+    position: relative; display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+    margin: 0 0 var(--space-2); padding: 3px 10px; border-radius: 999px;
+    background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 500;
+  }
+  .fm-tag.fm-tag-empty { background: none; border: 1px dashed var(--dim); color: var(--muted); }
+  .fm-tag .fm-tag-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fm-tag .fm-tag-chevron { color: var(--muted); font-size: 10px; }
+  .fm-tag.saving { opacity: 0.5; }
+  .issue-row .fm-tag { margin: var(--space-2) 0 0; }
+  .fm-tag select {
+    position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; margin: 0;
+    opacity: 0; border: none; font-size: 16px; cursor: pointer;
+  }
   .issue-status-badge { display: inline-block; flex-shrink: 0; font-size: 11px; font-weight: 600; font-family: var(--sans); border-radius: 10px; padding: 2px var(--space-2); vertical-align: middle; }
   /* UI/UX pass, 2026-09-17: every lifecycle stage used to share this ONE
      gray badge regardless of meaning -- a dispatcher scanning a card
@@ -463,7 +483,7 @@
 <body>
 
 <div id="notTelegram" class="not-telegram" style="display:none">
-  Buka dashboard ini dari tombol "ð Buka Dashboard Dispatcher" di chat bot SKL Lapangan, bukan dari browser langsung.
+  Buka dashboard ini dari tombol "📋 Buka Dashboard Dispatcher" di chat bot SKL Lapangan, bukan dari browser langsung.
 </div>
 
 <div id="app" style="display:none">
@@ -650,6 +670,44 @@ let openDetailId = null;
 // into mekanik-api at all, so Farman relays what they say over WhatsApp).
 let mechanicsList = [];
 
+// Failure-mode catalog for the tag picker (2026-09-24), same once-per-load
+// caching as mechanicsList. dispatcher-api has already dropped the routine
+// upkeep items.
+let failureModesList = [];
+
+function prettyCategory(c) {
+  const s = (c || "lainnya").replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// The tag under each issue: what the system thinks broke. Tap to correct.
+// A right guess is never tapped -- it gets confirmed when the repair is
+// marked done (DB trigger confirm_issues_on_repair_close); a correction
+// is confirmed on the spot (confirm_issue_on_failure_mode_change).
+function fmTagHtml(issue) {
+  const current = issue.failure_mode_id;
+  const name = issue.failure_modes ? issue.failure_modes.name : null;
+  const groups = {};
+  failureModesList.forEach((f) => { (groups[f.category] = groups[f.category] || []).push(f); });
+  let options = "";
+  if (!current) options += '<option value="" selected disabled>Pilih jenis kerusakan</option>';
+  // A current value the picker doesn't offer (retired, or routine) still
+  // has to show as selected rather than silently becoming the first option.
+  else if (!failureModesList.some((f) => f.id === current)) {
+    options += `<option value="${current}" selected disabled>${name || "(tidak dikenal)"}</option>`;
+  }
+  options += Object.keys(groups).map((cat) =>
+    `<optgroup label="${prettyCategory(cat)}">${groups[cat].map((f) =>
+      `<option value="${f.id}"${f.id === current ? " selected" : ""}>${f.name}</option>`).join("")}</optgroup>`
+  ).join("");
+  return `
+    <span class="fm-tag${current ? "" : " fm-tag-empty"}">
+      <span class="fm-tag-text">${name || "Pilih jenis kerusakan"}</span><span class="fm-tag-chevron">▾</span>
+      <select class="fm-select" data-issue-id="${issue.id}" aria-label="Jenis kerusakan">${options}</select>
+    </span>
+  `;
+}
+
 // Whose problem is it? A pending sign-off is the DISPATCHER's decision;
 // an open repair is the mechanic's to finish, the dispatcher only gets
 // involved if parts are asked for. So sign-offs sort to the top -- that
@@ -717,7 +775,7 @@ function renderRepairSummaryCard(r, firstLoad) {
         <span class="status-chip status-chip-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
       </div>
       <div class="card-meta">Servis #${r.seq} &middot; ${issues.length} masalah &middot; Turun ${formatDuration(r.downtime_start)}</div>
-      ${blocked ? `<div class="repair-blocked-note">â³ ${blocked}</div>` : ""}
+      ${blocked ? `<div class="repair-blocked-note">⏳ ${blocked}</div>` : ""}
     </div>
   `;
 }
@@ -731,9 +789,10 @@ function renderIssuesHtml(issues) {
     .map((issue) => `
       <div class="issue-edit-row" data-issue-id="${issue.id}">
         <div class="issue-header">
-          <div class="issue-name">${issue.failure_modes ? issue.failure_modes.name : "(lainnya)"}${issue.description ? " -- " + issue.description : ""}</div>
+          <div class="issue-name">${issue.description || "(tanpa keterangan)"}</div>
           <span class="issue-status-badge issue-status-badge-${issue.status}">${ISSUE_STATUS_LABELS[issue.status] || issue.status || ""}</span>
         </div>
+        ${fmTagHtml(issue)}
         ${(() => {
           if (issue.status === "done" || issue.status === "verified") return "";
           const blocks = [];
@@ -829,7 +888,7 @@ function renderIssuesHtml(issues) {
 // the dispatcher's only remaining move is the sign-off itself, below.
 function renderIssuesReadonlyHtml(issues) {
   return issues
-    .map((i) => `<div class="issue-row"><div class="issue-header"><span>${i.failure_modes ? i.failure_modes.name : "(lainnya)"}${i.description ? " -- " + i.description : ""}</span><span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div></div>`)
+    .map((i) => `<div class="issue-row"><div class="issue-header"><span>${i.description || "(tanpa keterangan)"}</span><span class="issue-status-badge issue-status-badge-${i.status}">${ISSUE_STATUS_LABELS[i.status] || i.status || ""}</span></div>${fmTagHtml(i)}</div>`)
     .join("") || '<div class="issue-row">(belum ada masalah tercatat)</div>';
 }
 
@@ -902,6 +961,27 @@ function closeDetailSheet() {
 function wireDetailSheetHandlers(sheet, repairId) {
   sheet.querySelector(".detail-sheet-close").addEventListener("click", closeDetailSheet);
 
+  // Failure-mode correction (2026-09-24) -- see fmTagHtml. Saves on pick,
+  // no separate "save" button: choosing from the list IS the decision.
+  sheet.querySelectorAll(".fm-select").forEach((sel) => {
+    const previous = sel.value;
+    sel.addEventListener("change", async () => {
+      const tag = sel.closest(".fm-tag");
+      tag.classList.add("saving");
+      tag.querySelector(".fm-tag-text").textContent = sel.options[sel.selectedIndex].text;
+      try {
+        await call("set_failure_mode", { id: sel.dataset.issueId, failure_mode_id: sel.value });
+        if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        loadRepairs();
+      } catch (e) {
+        toast("Gagal: " + e.message);
+        sel.value = previous;
+        tag.querySelector(".fm-tag-text").textContent = sel.options[sel.selectedIndex].text;
+        tag.classList.remove("saving");
+      }
+    });
+  });
+
   sheet.querySelectorAll(".btn-start-progress").forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -967,7 +1047,11 @@ function wireDetailSheetHandlers(sheet, repairId) {
   // Per-issue, mirrors mekanik-miniapp's own request-parts button --
   // see the template's own comment for why this replaced the old
   // whole-card btn-complete.
-  sheet.querySelectorAll(".btn-request-parts").forEach((btn) => {
+  // :not() fixed 2026-09-24 -- the relayed mechanic-name buttons borrow
+  // this class for its look, so they used to get this handler too: one
+  // tap on "Oki" also fired request_parts, submitting anything typed but
+  // not yet sent in that issue's parts box.
+  sheet.querySelectorAll(".btn-request-parts:not(.btn-record-issue-done)").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest(".issue-edit-row");
       // Every ".issue-parts-needed" input in this issue's box (the
@@ -1364,8 +1448,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
   // (list_pending_repairs + list_yard_checkins), rendering both tabs
   // immediately from the one response.
   try {
-    const { repairs, checkins, mechanics } = await call("init_data");
+    const { repairs, checkins, mechanics, failure_modes } = await call("init_data");
     mechanicsList = mechanics || [];
+    failureModesList = failure_modes || [];
     renderRepairs(repairs);
     renderYard(checkins);
   } catch (e) {
